@@ -39,6 +39,11 @@ Using the pid will only download a single episode
 python ruvsarpur.py --pid "4849075"
 ```
 
+Use the `-o` or `--output` argument to control where the video files will be saved to. Please make sure that you don't end your path with a backwards slash.
+```
+python ruvsarpur.py --pid "4849075" -o "c:\videos\ruv"
+```
+
 The script keeps track of the shows that have already been downloaded. You can force it to re-download files by using the `--force` switch
 ```
 python ruvsarpur.py --pid "4849075" --force
@@ -50,9 +55,9 @@ python ruvsarpur.py --find "Hvolpasveit" --refresh
 ```
 
 # Scheduling downloads
-You can schedule this script to run periodically to download new episodes in a series. Use the `--sid` option to monitor a particular tv series
+You can schedule this script to run periodically to download new episodes in a series. Use the `--sid` option to monitor a particular tv series and `-o` to set the directory to save the video file into.
 ```
-python ruvsarpur.py --sid "18457"
+python ruvsarpur.py --sid "18457" -o "c:\videos\ruv\hvolpasveit"
 ```
 
 # Requires
