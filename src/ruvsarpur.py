@@ -7,7 +7,7 @@
 #      For alternative install http://stackoverflow.com/a/33163704
 
 
-import sys, pprint
+import sys, pprint, os.path
 from pathlib import Path # to check for file existence in the file system
 import json # To store and load the tv schedule that has already been downloaded
 import argparse # Command-line argument parser
@@ -286,6 +286,15 @@ def runMain():
     if( not args.force and item['pid'] in previously_recorded ):
       print("Skipping already recorded show '{0}' pid={1}".format(local_filename, item['pid']))
       continue
+      
+    # If the output directory is set then check if it exists and create it if it is not
+    # pre-pend it to the file name then
+    if( args.output is not None ):
+      if not os.path.exists(args.output):
+        os.makedirs(args.output)
+        
+      # Now prepend the directory to the filename
+      local_filename = os.path.join(args.output, local_filename)
     
     # Download the file
     result = find_and_download_file(item['pid'], local_filename)
