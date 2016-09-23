@@ -1,3 +1,6 @@
+<p align="center">
+  <img src="https://raw.githubusercontent.com/sverrirs/ruvsarpur/master/img/entertainment.png">
+</p>
 # RÚV Sarpur Download
 A simple python script that allows you to download TV shows off the Icelandic RÚV Sarpurinn website. 
 
