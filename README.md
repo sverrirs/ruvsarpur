@@ -49,6 +49,12 @@ The script downloads the tv schedule for the last month (that is the default ava
 python ruvsarpur.py --find "Hvolpasveit" --refresh
 ```
 
+# Scheduling downloads
+You can schedule this script to run periodically to download new episodes in a series. Use the `--sid` option to monitor a particular tv series
+```
+python ruvsarpur.py --sid "18457"
+```
+
 # Requires
 The script requires the following packages to be installed 
 ```
