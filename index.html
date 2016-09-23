@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset='utf-8'>
+    <meta http-equiv="X-UA-Compatible" content="chrome=1">
+    <link href='https://fonts.googleapis.com/css?family=Chivo:900' rel='stylesheet' type='text/css'>
+    <link rel="stylesheet" type="text/css" href="stylesheets/stylesheet.css" media="screen">
+    <link rel="stylesheet" type="text/css" href="stylesheets/github-dark.css" media="screen">
+    <link rel="stylesheet" type="text/css" href="stylesheets/print.css" media="print">
+    <!--[if lt IE 9]>
+    <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <title>Ruvsarpur by sverrirs</title>
+  </head>
+
+  <body>
+    <div id="container">
+      <div class="inner">
+
+        <header>
+          <h1>Ruvsarpur</h1>
+          <h2>Python script to download shows off the Icelandic RÚV website</h2>
+        </header>
+
+        <section id="downloads" class="clearfix">
+          <a href="https://github.com/sverrirs/ruvsarpur/zipball/master" id="download-zip" class="button"><span>Download .zip</span></a>
+          <a href="https://github.com/sverrirs/ruvsarpur/tarball/master" id="download-tar-gz" class="button"><span>Download .tar.gz</span></a>
+          <a href="https://github.com/sverrirs/ruvsarpur" id="view-on-github" class="button"><span>View on GitHub</span></a>
+        </section>
+
+        <hr>
+
+        <section id="main_content">
+          <p align="center">
+  <img src="https://raw.githubusercontent.com/sverrirs/ruvsarpur/master/img/entertainment.png" alt="logo" title="logo">
+</p>
+
+<h1>
+<a id="rÚv-sarpur-download" class="anchor" href="#r%C3%9Av-sarpur-download" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>RÚV Sarpur Download</h1>
+
+<p>A simple python script that allows you to download TV shows off the Icelandic RÚV Sarpurinn website. </p>
+
+<p>The script is written in Python 3.5</p>
+
+<h1>
+<a id="examples" class="anchor" href="#examples" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>Examples</h1>
+
+<p>The script can be run simply by typing in </p>
+
+<pre><code>python ruvsarpur.py --help
+</code></pre>
+
+<p>To find shows by title use the <code>--find</code> argument</p>
+
+<pre><code>python ruvsarpur.py --find "Hvolpa"
+</code></pre>
+
+<p>which returns</p>
+
+<pre><code>Found 3 shows
+4849074 : Hvolpasveitin (16 of 26)
+          pid: 4849074
+          sid: 18457
+4849075 : Hvolpasveitin (17 of 26)
+          pid: 4849075
+          sid: 18457
+4849077 : Hvolpasveitin (19 of 26)
+          pid: 4849077
+          sid: 18457
+</code></pre>
+
+<p>To download shows you can either use the sid (series id) or the pid (program id) to select what to download.</p>
+
+<p>Using the sid will download all available episodes in the series</p>
+
+<pre><code>python ruvsarpur.py --sid "18457"
+</code></pre>
+
+<p>Using the pid will only download a single episode</p>
+
+<pre><code>python ruvsarpur.py --pid "4849075"
+</code></pre>
+
+<p>Use the <code>-o</code> or <code>--output</code> argument to control where the video files will be saved to. Please make sure that you don't end your path with a backwards slash.</p>
+
+<pre><code>python ruvsarpur.py --pid "4849075" -o "c:\videos\ruv"
+</code></pre>
+
+<p>The script keeps track of the shows that have already been downloaded. You can force it to re-download files by using the <code>--force</code> switch</p>
+
+<pre><code>python ruvsarpur.py --pid "4849075" --force
+</code></pre>
+
+<p>The script downloads the tv schedule for the last month (that is the default availability of shows on the RÚV website). By default the script will only refresh the schedule once per day. You can force it to re-download the tv schedule by using the <code>--refresh</code> switch</p>
+
+<pre><code>python ruvsarpur.py --find "Hvolpasveit" --refresh
+</code></pre>
+
+<h1>
+<a id="scheduling-downloads" class="anchor" href="#scheduling-downloads" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>Scheduling downloads</h1>
+
+<p>You can schedule this script to run periodically to download new episodes in a series. Use the <code>--sid</code> option to monitor a particular tv series and <code>-o</code> to set the directory to save the video file into.</p>
+
+<pre><code>python ruvsarpur.py --sid "18457" -o "c:\videos\ruv\hvolpasveit"
+</code></pre>
+
+<h1>
+<a id="requires" class="anchor" href="#requires" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>Requires</h1>
+
+<p>The script requires the following packages to be installed </p>
+
+<pre><code>pip install python-dateutil
+pip install requests
+pip install simplejson
+pip install fuzzywuzzy
+pip install python-levenshtein
+</code></pre>
+
+<p>If you run into trouble installing the python-levenstein package (it is optional) then check out this solution on StackOverflow <a href="http://stackoverflow.com/a/33163704">http://stackoverflow.com/a/33163704</a></p>
+        </section>
+
+        <footer>
+          Ruvsarpur is maintained by <a href="https://github.com/sverrirs">sverrirs</a><br>
+          This page was generated by <a href="https://pages.github.com">GitHub Pages</a>. Tactile theme by <a href="https://twitter.com/jasonlong">Jason Long</a>.
+        </footer>
+
+        
+      </div>
+    </div>
+  </body>
+</html>
