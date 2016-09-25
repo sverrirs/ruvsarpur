@@ -1,3 +1,13 @@
+#!/usr/bin/env python
+__version__ = "1.1.0"
+"""
+Python script that allows you to download TV shows off the Icelandic RÚV Sarpurinn website.
+The script is written in Python 3.5
+
+See: https://github.com/sverrirs/ruvsarpur
+Author: Sverrir Sigmundarson  info@sverrirs.com  https://www.sverrirs.com
+"""
+
 # Requires the following
 #   pip install python-dateutil
 #   pip install requests
@@ -15,6 +25,8 @@ import requests # Downloading of data from HTTP
 import datetime, dateutil.relativedelta # Formatting of date objects and adjusting date ranges
 from xml.etree import ElementTree  # Parsing of TV schedule XML data
 from fuzzywuzzy import fuzz # For fuzzy string matching when trying to find programs by title or description
+from operator import itemgetter, attrgetter # For sorting the download list items https://docs.python.org/3/howto/sorting.html#operator-module-functions
+import ntpath # Used to extract file name from path for all platforms http://stackoverflow.com/a/8384788
 
 # The urls that should be tried when attempting to discover the actual video file on the server
 EP_URLS = [
@@ -47,9 +59,9 @@ def printProgress (iteration, total, prefix = '', suffix = '', decimals = 1, bar
 # Downloads a file using Requests
 # From: http://stackoverflow.com/a/16696317
 def download_file(url, local_filename ):
-    #local_filename = url.split('/')[-1]
     # NOTE the stream=True parameter
     r = requests.get(url, stream=True)
+    
     # If the status is not success then terminate
     if( r.status_code != 200 ):
       return None
@@ -57,8 +69,7 @@ def download_file(url, local_filename ):
     total_size = int(r.headers['Content-Length'])
     completed_size = 0
     
-    print("Found {1} at {0}".format(url, local_filename))
-    
+    print(ntpath.basename(local_filename))
     printProgress(completed_size, total_size, prefix = 'Downloading:', suffix = 'Complete', barLength = 25)
     
     with open(local_filename, 'wb') as f:
@@ -67,7 +78,8 @@ def download_file(url, local_filename ):
                 f.write(chunk)
                 completed_size += 1024
                 printProgress(completed_size, total_size, prefix = 'Downloading:', suffix = 'Complete', barLength = 25)
-                #f.flush() commented by recommendation from J.F.Sebastian
+    # Write one extra line break after operation finishes
+    sys.stdout.write('\n')
     return local_filename
 
 # Attempts to locate the video file for a certain program id on the server
@@ -78,7 +90,6 @@ def find_and_download_file(pid, local_filename ):
   for url in EP_URLS:
     for r in range(30):
       url_formatted = url.format(pid, r)
-      #print(url_formatted)
       if( not download_file(url_formatted, local_filename) is None ):
         return local_filename
     
@@ -143,18 +154,20 @@ def getShowtimes():
       if( not ep is None ):
         entry['ep_num'] = ep.get('number')
         entry['ep_total'] = ep.get('number-of-episodes')
-        
+        if( int(entry['ep_total']) > 1 ):
+          # Append the episode number to the show title if it is a real multi-episode show
+          entry['title'] += " ("+entry['ep_num']+" af "+entry['ep_total']+")"
+              
       # Save the entry into the main schedule
       schedule[entry['pid']] = entry
       
   return schedule
   
 def printTvShowDetails(show):
-  title = show['pid']+ " : "+show['title']
-  if( 'ep_num' in show ):
-    title += " ("+show['ep_num']+" of "+show['ep_total']+")"
-  print(title)
-  
+  if( not 'pid' in show ):
+    return
+      
+  print(show['pid']+ " : "+show['title'] + " ["+show['showtime'][:10]+"]")
   print( "          pid: "+show['pid'] )
   print( "          sid: "+show['sid'] )
   
@@ -166,16 +179,26 @@ def parseArguments():
   parser.add_argument("--sid", help="The series id for the tv series that should be downloaded",
                                type=str)
   parser.add_argument("--pid", help="The program id for a specific program entry that should be downloaded",
-                               type=str)  
+                               type=str) 
+
+  parser.add_argument("-c", "--category", 
+                            choices=[1,2,3,4,5,6,7,9,13,17],
+                            help="Limit the results to only shows in particular categories. Categories are: 1='Börn',2='Framhaldsþættir',3='Fréttatengt',4='Fræðsla',5='Íþróttir',6='Íslenskir þættir',7='Kvikmyndir',9='Tónlist',13='Samfélag',17='Menning'",
+                            type=int)
   
   parser.add_argument("-f", "--find", help="Searches the TV schedule for a program matching the text given",
                                type=str)  
+                               
+  parser.add_argument("--days", help="Searches only shows shown in the past N number of days. E.g. if --days 1 then only shows shown yesterday will be searched.",
+                               type=int)  
 
   parser.add_argument("--refresh", help="Refreshes the TV schedule data", action="store_true")
   
   parser.add_argument("--force", help="Forces the program to re-download shows", action="store_true")
   
-  parser.add_argument("-d", "--debug", help="Prints out extra debugging information while script is running",                                     action="store_true")
+  parser.add_argument("--list", help="Only lists the items found but nothing is downloaded", action="store_true")
+  
+  parser.add_argument("-d", "--debug", help="Prints out extra debugging information while script is running", action="store_true")
   
   return parser.parse_args()
  
@@ -213,13 +236,20 @@ def getExistingTvSchedule():
     return existing
   else:
     return None
-
+    
+    
 # The main entry point for the script
 def runMain():
   today = datetime.date.today()
   
   # Construct the argument parser for the commandline
   args = parseArguments()
+  
+  # Check to see if date is set and construct the limit date
+  filter_older_than_date = datetime.date.min
+  if( args.days is not None and args.days > 0 and args.days < 30 ):
+    # Subtract a whole month from the today date
+    filter_older_than_date = today - dateutil.relativedelta.relativedelta(days=args.days)
   
   # Get information about already downloaded episodes
   previously_recorded = getPreviouslyRecordedShows()
@@ -229,7 +259,7 @@ def runMain():
     schedule = getExistingTvSchedule()
   
   if( args.refresh or schedule is None or schedule['date'].date() < today ):
-    print("Fetching TV Schedule")
+    print("Updating TV Schedule")
     schedule = getShowtimes()
     
   # Save the tv schedule as the most current one
@@ -244,43 +274,64 @@ def runMain():
   download_list = []
   
   for key, schedule_item in schedule.items():
+  
+    # Skip any items that aren't show items
+    if( not 'pid' in schedule_item ):
+      continue
+    
+    # If excluded by date then don't consider (2016-09-04 08:46:00)
+    if( args.days is not None ):
+      show_date = datetime.datetime.strptime(schedule_item['showtime'], '%Y-%m-%d %H:%M:%S')
+      if( show_date.date() < filter_older_than_date ):      
+        if( args.debug ):
+          print("Excluded show '"+schedule_item['title']+"' "+schedule_item['pid']+ " due to date limit ("+schedule_item['showtime']+")")
+        continue
+        
+    # Check if category exclusion
+    if( args.category and (not 'catid' in schedule_item or not int(schedule_item['catid']) == args.category )):
+      if( args.debug ):
+          print("Excluded show '"+schedule_item['title']+"' "+schedule_item['pid']+ " is not in category '"+str(args.category)+"'")
+      continue
     
     # if the series id is set then find all shows belonging to that series
-    if( args.sid is not None and 
-        'sid' in schedule_item and 
-        args.sid == schedule_item['sid'] ):
+    if( args.sid is not None ):
+      if( 'sid' in schedule_item and args.sid == schedule_item['sid'] ):
         download_list.append(schedule_item)
-    elif( args.pid is not None and 
-          'pid' in schedule_item and 
-          args.pid == schedule_item['pid'] ):
+    elif( args.pid is not None ):
+      if( 'pid' in schedule_item and args.pid == schedule_item['pid'] ):
+        download_list.append(schedule_item)
+    elif( args.find is not None ):
+      if( 'title' in schedule_item and fuzz.partial_ratio( args.find, schedule_item['title'] ) > 80 ):
+        download_list.append(schedule_item)
+    else:
+      # By default if there is no filtering then we simply list everything in the schedule
       download_list.append(schedule_item)
-    elif( args.find is not None and 
-          'title' in schedule_item and 
-          fuzz.partial_ratio( args.find, schedule_item['title'] ) > 80 ):
-      #print( "fuzz: "+ str(fuzz.ratio( args.find, schedule_item['title'] )))
-      #print( "fuzz partial: "+ str(fuzz.partial_ratio( args.find, schedule_item['title'] )))
-      #print( "fuzz token sort: "+ str(fuzz.token_sort_ratio( args.find, schedule_item['title'] )))
-      download_list.append(schedule_item)    
     
   if( len(download_list) <= 0 ):
     print("Nothing found to download")
     sys.exit(0)
     
+  # Sort the download list by show name and then by showtime
+  download_list = sorted(download_list, key=itemgetter('pid', 'title'))
+  download_list = sorted(download_list, key=itemgetter('showtime'), reverse=True)
     
-  # Now a special case for the find operation
-  if( args.find is not None ):
+  # Now a special case for the list operation
+  # Simply show a list of all the episodes found and then terminate
+  if( args.list ):
     print( "Found {0} shows".format(len(download_list)))
     for item in download_list:
       printTvShowDetails(item)
     sys.exit(0)
   
   for item in download_list:
-    # File has not been downloaded before
-    # Create the local filename
-    local_filename = "{0} ({2} af {3}).mp4".format(item['title'], 
-                                                   item['pid'],
-                                                   item['ep_num'],
-                                                   item['ep_total'])
+    # Create the local filename, if not multiple episodes then 
+    # append the date and pid to the filename to avoid conflicts
+    if( 'ep_num' in item ):
+      local_filename = "{0}.mp4".format(item['title'])
+    else:
+      local_filename = "{0} - {1} ({2}).mp4".format(item['title'], 
+                                                   item['showtime'][:10],
+                                                   item['pid'])
     
     # If excluded then don't download
     if( not args.force and item['pid'] in previously_recorded ):
@@ -306,7 +357,6 @@ def runMain():
   savePreviouslyRecordedShows(previously_recorded)
   
   # Exit
-  print("Script completed")
   sys.exit(0)
     
 

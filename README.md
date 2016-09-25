@@ -12,9 +12,20 @@ The script can be run simply by typing in
 python ruvsarpur.py --help
 ```
 
+To list all available shows and their information use the `--list` switch. 
+```
+python ruvsarpur.py --list
+```
+__The `--list` argument can be used in conjunction with any other argument to have the script only list what it found without downloading.__
+
+The script downloads the tv schedule for the last month (that is the default availability of shows on the RÚV website). By default the script will only refresh the schedule once per day. You can force it to re-download the tv schedule by using the `--refresh` switch
+```
+python ruvsarpur.py --list --refresh
+```
+
 To find shows by title use the `--find` argument
 ```
-python ruvsarpur.py --find "Hvolpa"
+python ruvsarpur.py --list --find "Hvolpa"
 ```
 which returns
 ```
@@ -34,33 +45,58 @@ To download shows you can either use the sid (series id) or the pid (program id)
 
 Using the sid will download all available episodes in the series
 ```
-python ruvsarpur.py --sid "18457"
+python ruvsarpur.py --sid 18457
 ```
 
 Using the pid will only download a single episode
 ```
-python ruvsarpur.py --pid "4849075"
+python ruvsarpur.py --pid 4849075
 ```
 
 Use the `-o` or `--output` argument to control where the video files will be saved to. Please make sure that you don't end your path with a backwards slash.
 ```
-python ruvsarpur.py --pid "4849075" -o "c:\videos\ruv"
+python ruvsarpur.py --pid 4849075 -o "c:\videos\ruv"
 ```
 
 The script keeps track of the shows that have already been downloaded. You can force it to re-download files by using the `--force` switch
 ```
-python ruvsarpur.py --pid "4849075" --force
+python ruvsarpur.py --pid 4849075 --force
 ```
 
-The script downloads the tv schedule for the last month (that is the default availability of shows on the RÚV website). By default the script will only refresh the schedule once per day. You can force it to re-download the tv schedule by using the `--refresh` switch
+Using `--category` argument allows you to filter the tv schedule by category. For example to list only childrens tv shows use the category number 1
 ```
-python ruvsarpur.py --find "Hvolpasveit" --refresh
+python ruvsarpur.py --list --category 1
+```
+
+The available categories are:
+```
+1='Börn'
+2='Framhaldsþættir'
+3='Fréttatengt'
+4='Fræðsla'
+5='Íþróttir'
+6='Íslenskir þættir'
+7='Kvikmyndir'
+9='Tónlist'
+13='Samfélag'
+17='Menning'
+```
+
+The `--days` argument can be used to filter the list by only listing shows added in the past _N_ number of days. For example, to list only children's shows that were added in the past day use:
+```
+python ruvsarpur.py --list --category 1 --days 1
 ```
 
 # Scheduling downloads
 You can schedule this script to run periodically to download new episodes in a series. Use the `--sid` option to monitor a particular tv series and `-o` to set the directory to save the video file into.
 ```
-python ruvsarpur.py --sid "18457" -o "c:\videos\ruv\hvolpasveit"
+python ruvsarpur.py --sid 18457 -o "c:\videos\ruv\hvolpasveit"
+```
+
+You can additionally add the `--days` argument to only include shows from the N number of previous days (e.g. specify 1 if you intend to run this script every day, 7 if you only intend to run it once a week etc)
+
+```
+python ruvsarpur.py --sid 18457 --days 7  -o "c:\videos\ruv"
 ```
 
 # Requires
