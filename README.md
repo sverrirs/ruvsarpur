@@ -7,7 +7,7 @@ A python script that allows you to download TV shows off the Icelandic RÚV Sarp
 The script is written in Python 3.5
 
 # How to use
-The script can be run simply by typing in 
+After downloading the script can be run by typing in
 ```
 python ruvsarpur.py --help
 ```
