@@ -101,7 +101,9 @@ python ruvsarpur.py --sid 18457 --days 7  -o "c:\videos\ruv"
 ```
 
 # Requires
-The script requires the following packages to be installed 
+Python 3.x
+
+The script also requires the following packages to be installed 
 ```
 pip install python-dateutil
 pip install requests
