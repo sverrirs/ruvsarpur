@@ -12,11 +12,10 @@ The script can be run simply by typing in
 python ruvsarpur.py --help
 ```
 
-To list all available shows and their information use the `--list` switch. 
+To list all available shows and their information use the `--list` switch. This switch can be used with any other argument to disable downloading and have the script only list matches.
 ```
 python ruvsarpur.py --list
 ```
-_The `--list` argument can be used in conjunction with any other argument to have the script only list what it found without downloading._
 
 The script downloads the tv schedule for the last month (that is the default availability of shows on the RÚV website). By default the script will only refresh the schedule once per day. You can force it to re-download the tv schedule by using the `--refresh` switch
 ```
