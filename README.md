@@ -6,7 +6,7 @@ A python script that allows you to download TV shows off the Icelandic RÚV Sarp
 
 The script is written in Python 3.5
 
-# Examples
+# How to use
 The script can be run simply by typing in 
 ```
 python ruvsarpur.py --help
@@ -61,6 +61,8 @@ The script keeps track of the shows that have already been downloaded. You can f
 ```
 python ruvsarpur.py --pid 4849075 --force
 ```
+
+# Advanced uses
 
 Using `--category` argument allows you to filter the tv schedule by category. For example to list only childrens tv shows use the category number 1
 ```
