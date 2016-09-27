@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-__version__ = "1.1.0"
+__version__ = "1.2.0"
 """
 Python script that allows you to download TV shows off the Icelandic RÚV Sarpurinn website.
 The script is written in Python 3.5
@@ -9,6 +9,8 @@ Author: Sverrir Sigmundarson  info@sverrirs.com  https://www.sverrirs.com
 """
 
 # Requires the following
+#   pip install colorama
+#   pip install termcolor
 #   pip install python-dateutil
 #   pip install requests
 #   pip install simplejson
@@ -17,7 +19,10 @@ Author: Sverrir Sigmundarson  info@sverrirs.com  https://www.sverrirs.com
 #      For alternative install http://stackoverflow.com/a/33163704
 
 
-import sys, pprint, os.path
+import sys, pprint, os.path, re
+import textwrap # For text wrapping in the console window
+from colorama import init, deinit # For colorized output to console windows (platform and shell independent)
+from termcolor import colored, cprint # For shorthand color printing to the console, https://pypi.python.org/pypi/termcolor
 from pathlib import Path # to check for file existence in the file system
 import json # To store and load the tv schedule that has already been downloaded
 import argparse # Command-line argument parser
@@ -28,6 +33,19 @@ from fuzzywuzzy import fuzz # For fuzzy string matching when trying to find prog
 from operator import itemgetter, attrgetter # For sorting the download list items https://docs.python.org/3/howto/sorting.html#operator-module-functions
 import ntpath # Used to extract file name from path for all platforms http://stackoverflow.com/a/8384788
 
+# Lambdas as shorthands for printing various types of data
+# See https://pypi.python.org/pypi/termcolor for more info
+color_title = lambda x: colored(x, 'cyan', 'on_grey')
+color_pid_title = lambda x: colored(x, 'red', 'on_cyan')
+color_pid = lambda x: colored(x, 'red')
+color_sid = lambda x: colored(x, 'yellow')
+color_description = lambda x: colored(x, 'white')
+
+color_progress_fill = lambda x: colored(x, 'green')
+color_progress_remaining = lambda x: colored(x, 'white')
+color_progress_percent = lambda x: colored(x, 'green')
+
+
 # The urls that should be tried when attempting to discover the actual video file on the server
 EP_URLS = [
             'http://smooth.ruv.cache.is/lokad/{0}R{1}.mp4',
@@ -36,7 +54,7 @@ EP_URLS = [
              
 # Print console progress bar
 # http://stackoverflow.com/a/34325723
-def printProgress (iteration, total, prefix = '', suffix = '', decimals = 1, barLength = 100):
+def printProgress (iteration, total, prefix = '', suffix = '', decimals = 1, barLength = 100, color = True):
     """
     Call in a loop to create terminal progress bar
     @params:
@@ -50,8 +68,13 @@ def printProgress (iteration, total, prefix = '', suffix = '', decimals = 1, bar
     formatStr       = "{0:." + str(decimals) + "f}"
     percents        = formatStr.format(100 * (iteration / float(total)))
     filledLength    = int(round(barLength * iteration / float(total)))
-    bar             = '█' * filledLength + '-' * (barLength - filledLength)
-    sys.stdout.write('\r %s |%s| %s%s %s' % (prefix, bar, percents, '%', suffix)),
+    if( color ):
+      bar             = color_progress_fill('█' * filledLength) + color_progress_remaining('-' * (barLength - filledLength))
+      sys.stdout.write('\r %s |%s| %s %s' % (prefix, bar, color_progress_percent(percents+'%'), suffix)),
+    else:
+      bar             = '█' * filledLength + '-' * (barLength - filledLength)
+      sys.stdout.write('\r %s |%s| %s %s' % (prefix, bar, percents+'%', suffix)),
+      
     if iteration == total:
         sys.stdout.write('\n')
     sys.stdout.flush()
@@ -67,18 +90,23 @@ def download_file(url, local_filename ):
       return None
     
     total_size = int(r.headers['Content-Length'])
+    total_size_mb = str(int(total_size/1024.0/1024.0))
     completed_size = 0
-    
-    print(ntpath.basename(local_filename))
-    printProgress(completed_size, total_size, prefix = 'Downloading:', suffix = 'Complete', barLength = 25)
+        
+    print("{0} | Total: {1} MB".format(color_title(ntpath.basename(local_filename)), total_size_mb))
+    printProgress(completed_size, total_size, prefix = 'Downloading:', suffix = 'Starting', barLength = 25)
     
     with open(local_filename, 'wb') as f:
-        for chunk in r.iter_content(chunk_size=1024): 
-            if chunk: # filter out keep-alive new chunks
-                f.write(chunk)
-                completed_size += 1024
-                printProgress(completed_size, total_size, prefix = 'Downloading:', suffix = 'Complete', barLength = 25)
-    # Write one extra line break after operation finishes
+      for chunk in r.iter_content(chunk_size=1024): 
+        if chunk: # filter out keep-alive new chunks
+          f.write(chunk)
+          completed_size += 1024
+          printProgress(completed_size, total_size, prefix = 'Downloading:', suffix = 'Working ', barLength = 25)
+    
+    # Write a final completed line for the progress bar to signify that the operation is done
+    printProgress(completed_size, completed_size, prefix = 'Downloading:', suffix = 'Complete', barLength = 25, color = False)
+    
+    # Write one extra line break after operation finishes otherwise the subsequent prints will end up in the same line
     sys.stdout.write('\n')
     return local_filename
 
@@ -93,7 +121,7 @@ def find_and_download_file(pid, local_filename ):
       if( not download_file(url_formatted, local_filename) is None ):
         return local_filename
     
-  print( "Could not download file {0}, for pid={1}".format(local_filename, pid))
+  print( "{0} not found on server (pid={1})".format(color_title(ntpath.basename(local_filename)), pid))
   return None
   
   
@@ -102,16 +130,30 @@ def download_xml(url):
     # If the status is not success then terminate
     if( r.status_code != 200 ):
       return None
-      
+          
     # https://docs.python.org/2/library/xml.etree.elementtree.html
     tree = ElementTree.fromstring(r.content)
+        
     return tree
+    
+def getShowDetailsText(entry_xml):
+  
+  # Get the most basic show details text
+  details_basic = entry_xml.find('description')
+  details_orgtitle_el = entry_xml.find('original-title')
+  
+  if( not details_basic is None):
+    return details_basic.text
+  elif( not details_orgtitle_el is None):
+    return details_orgtitle_el.text
+    
+  # Nothing was found
+  return None
     
 def getShowtimes():
   today = datetime.date.today()
   # Subtract a whole month from the today date
   last_month = today - dateutil.relativedelta.relativedelta(months=1)
-  #last_month = today - dateutil.relativedelta.relativedelta(days=1)
   
   # Construct the URL for the last month and download the TV schedule
   url = "http://muninn.ruv.is/files/xml/ruv/{0}/{1}/$download".format(last_month.strftime('%Y-%m-%d'), today.strftime('%Y-%m-%d'))
@@ -132,7 +174,6 @@ def getShowtimes():
       continue
     
     for entry_xml in child.iter('event'):
-      #print(entry_xml.tag, entry_xml.attrib)
       entry = {}
       
       entry['title'] = entry_xml.find('title').text
@@ -141,6 +182,11 @@ def getShowtimes():
       entry['duration'] = entry_xml.get('duration')
       entry['sid'] = entry_xml.get('serie-id')
       
+      # Get the show details text
+      entry_details = getShowDetailsText(entry_xml)
+      if( not entry_details is None ):
+        entry['desc'] = entry_details
+        
       # If the serie id is nothing then it is not a show (e.g. dagskrárlok)
       if( not entry['sid'] ):
         continue
@@ -163,13 +209,16 @@ def getShowtimes():
       
   return schedule
   
-def printTvShowDetails(show):
+def printTvShowDetails(args, show):
   if( not 'pid' in show ):
     return
       
-  print(show['pid']+ " : "+show['title'] + " ["+show['showtime'][:10]+"]")
-  print( "          pid: "+show['pid'] )
-  print( "          sid: "+show['sid'] )
+  print( color_pid(show['pid'])+ ": "+color_title(show['title']))
+  print( color_sid(show['sid'].rjust(7)) + ": Sýnt "+show['showtime'][:-3] )
+  if( args.desc and 'desc' in show ):
+    for desc_line in textwrap.wrap(show['desc'], width=60):
+      print( "           "+color_description(desc_line) )
+  print("")
   
 def parseArguments():
   parser = argparse.ArgumentParser()
@@ -197,6 +246,8 @@ def parseArguments():
   parser.add_argument("--force", help="Forces the program to re-download shows", action="store_true")
   
   parser.add_argument("--list", help="Only lists the items found but nothing is downloaded", action="store_true")
+  
+  parser.add_argument("--desc", help="Displays show description text when available", action="store_true")
   
   parser.add_argument("-d", "--debug", help="Prints out extra debugging information while script is running", action="store_true")
   
@@ -237,127 +288,142 @@ def getExistingTvSchedule():
   else:
     return None
     
+def createLocalFileName(show):
+  # Create the local filename, if not multiple episodes then 
+  # append the date and pid to the filename to avoid conflicts
+  if( 'ep_num' in show ):
+    local_filename = "{0}.mp4".format(show['title'])
+  else:
+    local_filename = "{0} - {1} ({2}).mp4".format(show['title'], 
+                                                 show['showtime'][:10],
+                                                 show['pid'])
+                                                 
+  return local_filename
     
 # The main entry point for the script
 def runMain():
-  today = datetime.date.today()
-  
-  # Construct the argument parser for the commandline
-  args = parseArguments()
-  
-  # Check to see if date is set and construct the limit date
-  filter_older_than_date = datetime.date.min
-  if( args.days is not None and args.days > 0 and args.days < 30 ):
-    # Subtract a whole month from the today date
-    filter_older_than_date = today - dateutil.relativedelta.relativedelta(days=args.days)
-  
-  # Get information about already downloaded episodes
-  previously_recorded = getPreviouslyRecordedShows()
+  try:
+    init() # Initialize the colorama library
+    
+    today = datetime.date.today()
+    
+    # Construct the argument parser for the commandline
+    args = parseArguments()
+    
+    # Check to see if date is set and construct the limit date
+    filter_older_than_date = datetime.date.min
+    if( args.days is not None and args.days > 0 and args.days < 30 ):
+      # Subtract a whole month from the today date
+      filter_older_than_date = today - dateutil.relativedelta.relativedelta(days=args.days)
+    
+    # Get information about already downloaded episodes
+    previously_recorded = getPreviouslyRecordedShows()
 
-  # Get an existing tv schedule if possible
-  if( not args.refresh ):
-    schedule = getExistingTvSchedule()
-  
-  if( args.refresh or schedule is None or schedule['date'].date() < today ):
-    print("Updating TV Schedule")
-    schedule = getShowtimes()
+    # Get an existing tv schedule if possible
+    if( not args.refresh ):
+      schedule = getExistingTvSchedule()
     
-  # Save the tv schedule as the most current one
-  saveCurrentTvSchedule(schedule)
-  
-  if( args.debug ):
-    #pprint.pprint(schedule, indent=2)
+    if( args.refresh or schedule is None or schedule['date'].date() < today ):
+      print("Updating TV Schedule")
+      schedule = getShowtimes()
+      
+    # Save the tv schedule as the most current one
+    saveCurrentTvSchedule(schedule)
+    
+    if( args.debug ):
+      for key, schedule_item in schedule.items():
+        printTvShowDetails(args, schedule_item)
+      
+    # Now determine what to download
+    download_list = []
+    
     for key, schedule_item in schedule.items():
-      printTvShowDetails(schedule_item)
     
-  # Now determine what to download
-  download_list = []
-  
-  for key, schedule_item in schedule.items():
-  
-    # Skip any items that aren't show items
-    if( not 'pid' in schedule_item ):
-      continue
-    
-    # If excluded by date then don't consider (2016-09-04 08:46:00)
-    if( args.days is not None ):
-      show_date = datetime.datetime.strptime(schedule_item['showtime'], '%Y-%m-%d %H:%M:%S')
-      if( show_date.date() < filter_older_than_date ):      
+      # Skip any items that aren't show items
+      if( not 'pid' in schedule_item ):
+        continue
+      
+      # If excluded by date then don't consider (2016-09-04 08:46:00)
+      if( args.days is not None ):
+        show_date = datetime.datetime.strptime(schedule_item['showtime'], '%Y-%m-%d %H:%M:%S')
+        if( show_date.date() < filter_older_than_date ):      
+          if( args.debug ):
+            print("Excluded show '"+schedule_item['title']+"' "+schedule_item['pid']+ " due to date limit ("+schedule_item['showtime']+")")
+          continue
+          
+      # Check if category exclusion
+      if( args.category and (not 'catid' in schedule_item or not int(schedule_item['catid']) == args.category )):
         if( args.debug ):
-          print("Excluded show '"+schedule_item['title']+"' "+schedule_item['pid']+ " due to date limit ("+schedule_item['showtime']+")")
+            print("Excluded show '"+schedule_item['title']+"' "+schedule_item['pid']+ " is not in category '"+str(args.category)+"'")
+        continue
+      
+      # if the series id is set then find all shows belonging to that series
+      if( args.sid is not None ):
+        if( 'sid' in schedule_item and args.sid == schedule_item['sid'] ):
+          download_list.append(schedule_item)
+      elif( args.pid is not None ):
+        if( 'pid' in schedule_item and args.pid == schedule_item['pid'] ):
+          download_list.append(schedule_item)
+      elif( args.find is not None ):
+        if( 'title' in schedule_item and fuzz.partial_ratio( args.find, schedule_item['title'] ) > 80 ):
+          download_list.append(schedule_item)
+      else:
+        # By default if there is no filtering then we simply list everything in the schedule
+        download_list.append(schedule_item)
+      
+    total_items = len(download_list)
+    if( total_items <= 0 ):
+      print("Nothing found to download")
+      sys.exit(0)
+      
+    print( "Found {0} show(s)".format(total_items, ))
+      
+    # Sort the download list by show name and then by showtime
+    download_list = sorted(download_list, key=itemgetter('pid', 'title'))
+    download_list = sorted(download_list, key=itemgetter('showtime'), reverse=True)
+    
+    # Now a special case for the list operation
+    # Simply show a list of all the episodes found and then terminate
+    if( args.list ):
+      for item in download_list:
+        printTvShowDetails(args, item)
+      sys.exit(0)
+    
+    curr_item = 1
+    for item in download_list:
+      print("")
+      # Get a valid name for the save file
+      local_filename = createLocalFileName(item)
+      
+      # Print out item number
+      print( "{0} of {1}".format(curr_item, total_items))
+      curr_item += 1 # Count the file
+      
+      # If excluded then don't download
+      if( not args.force and item['pid'] in previously_recorded ):
+        print("'{0}' already recorded (pid={1})".format(color_title(local_filename), item['pid']))
         continue
         
-    # Check if category exclusion
-    if( args.category and (not 'catid' in schedule_item or not int(schedule_item['catid']) == args.category )):
-      if( args.debug ):
-          print("Excluded show '"+schedule_item['title']+"' "+schedule_item['pid']+ " is not in category '"+str(args.category)+"'")
-      continue
-    
-    # if the series id is set then find all shows belonging to that series
-    if( args.sid is not None ):
-      if( 'sid' in schedule_item and args.sid == schedule_item['sid'] ):
-        download_list.append(schedule_item)
-    elif( args.pid is not None ):
-      if( 'pid' in schedule_item and args.pid == schedule_item['pid'] ):
-        download_list.append(schedule_item)
-    elif( args.find is not None ):
-      if( 'title' in schedule_item and fuzz.partial_ratio( args.find, schedule_item['title'] ) > 80 ):
-        download_list.append(schedule_item)
-    else:
-      # By default if there is no filtering then we simply list everything in the schedule
-      download_list.append(schedule_item)
-    
-  if( len(download_list) <= 0 ):
-    print("Nothing found to download")
-    sys.exit(0)
-    
-  # Sort the download list by show name and then by showtime
-  download_list = sorted(download_list, key=itemgetter('pid', 'title'))
-  download_list = sorted(download_list, key=itemgetter('showtime'), reverse=True)
-    
-  # Now a special case for the list operation
-  # Simply show a list of all the episodes found and then terminate
-  if( args.list ):
-    print( "Found {0} shows".format(len(download_list)))
-    for item in download_list:
-      printTvShowDetails(item)
-    sys.exit(0)
-  
-  for item in download_list:
-    # Create the local filename, if not multiple episodes then 
-    # append the date and pid to the filename to avoid conflicts
-    if( 'ep_num' in item ):
-      local_filename = "{0}.mp4".format(item['title'])
-    else:
-      local_filename = "{0} - {1} ({2}).mp4".format(item['title'], 
-                                                   item['showtime'][:10],
-                                                   item['pid'])
-    
-    # If excluded then don't download
-    if( not args.force and item['pid'] in previously_recorded ):
-      print("Skipping already recorded show '{0}' pid={1}".format(local_filename, item['pid']))
-      continue
+      # If the output directory is set then check if it exists and create it if it is not
+      # pre-pend it to the file name then
+      if( args.output is not None ):
+        if not os.path.exists(args.output):
+          os.makedirs(args.output)
+          
+        # Now prepend the directory to the filename
+        local_filename = os.path.join(args.output, local_filename)
       
-    # If the output directory is set then check if it exists and create it if it is not
-    # pre-pend it to the file name then
-    if( args.output is not None ):
-      if not os.path.exists(args.output):
-        os.makedirs(args.output)
-        
-      # Now prepend the directory to the filename
-      local_filename = os.path.join(args.output, local_filename)
-    
-    # Download the file
-    result = find_and_download_file(item['pid'], local_filename)
-    if( not result is None ):
-      # Store the id as already recorded 
-      previously_recorded.append(item['pid'])
+      # Download the file
+      result = find_and_download_file(item['pid'], local_filename)
+      if( not result is None ):
+        # Store the id as already recorded 
+        previously_recorded.append(item['pid'])
 
-  # Now save the list of already recorded shows back to file and exit
-  savePreviouslyRecordedShows(previously_recorded)
-  
-  # Exit
-  sys.exit(0)
+    # Now save the list of already recorded shows back to file and exit
+    savePreviouslyRecordedShows(previously_recorded)
+    
+  finally:
+    deinit() #Deinitialize the colorama library
     
 
 # If the script file is called by itself then execute the main function

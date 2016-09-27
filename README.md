@@ -2,11 +2,26 @@
   <img src="https://raw.githubusercontent.com/sverrirs/ruvsarpur/master/img/entertainment.png" alt="logo" title="logo">
 </p>
 # RÚV Sarpur Download
-A python script that allows you to download TV shows off the Icelandic RÚV Sarpurinn website. 
+A python script that allows you to list, search and download TV shows off the Icelandic RÚV Sarpurinn website. 
 
-The script is written in Python 3.5
+For a simpler in-browser alternative check out the cross browser bookmarklet at https://labs.sverrirs.com/ruvsarpur/
 
-# How to use
+# Requirements
+Python version 3.x
+
+The script also requires the following packages to be installed 
+```
+pip install colorama    ** new in v1.2
+pip install termcolor   ** new in v1.2
+pip install python-dateutil
+pip install requests
+pip install simplejson
+pip install fuzzywuzzy
+pip install python-levenshtein
+```
+If you run into trouble installing the python-levenstein package (it is optional) then check out this solution on StackOverflow http://stackoverflow.com/a/33163704
+
+# Finding and listing shows
 After downloading the script can be run by typing in
 ```
 python ruvsarpur.py --help
@@ -29,25 +44,38 @@ python ruvsarpur.py --list --find "Hvolpa"
 which returns
 ```
 Found 3 shows
-4849074 : Hvolpasveitin (16 of 26)
-          pid: 4849074
-          sid: 18457
-4849075 : Hvolpasveitin (17 of 26)
-          pid: 4849075
-          sid: 18457
-4849077 : Hvolpasveitin (19 of 26)
-          pid: 4849077
-          sid: 18457
+4852061: Hvolpasveitin (11 af 24)
+  21810: Sýnt 2016-09-26 18:01
+
+4849078: Hvolpasveitin (20 af 26)
+  18457: Sýnt 2016-09-25 08:00
+
+4852060: Hvolpasveitin (10 af 24)
+  21810: Sýnt 2016-09-19 18:01
 ```
 
-To download shows you can either use the sid (series id) or the pid (program id) to select what to download.
+The results are formatted in the following pattern
+```
+{pid} : {show title}
+{sid} : {showtime}
+```
 
-Using the sid will download all available episodes in the series
+You can include the optional `--desc` switch to display a short description of each program (if it is available)
+
+```
+python ruvsarpur.py --list --find "Hvolpa" --desc
+```
+
+# Downloading shows
+
+To download shows you can either use the `sid` (series id) or the `pid` (program id) to select what to download.
+
+Using the `--sid` will download all available episodes in the series
 ```
 python ruvsarpur.py --sid 18457
 ```
 
-Using the pid will only download a single episode
+Using the `--pid` will only download a single episode
 ```
 python ruvsarpur.py --pid 4849075
 ```
@@ -100,15 +128,11 @@ You can additionally add the `--days` argument to only include shows from the N 
 python ruvsarpur.py --sid 18457 --days 7  -o "c:\videos\ruv"
 ```
 
-# Requires
-Python 3.x
+# Frequently Asked Questions
 
-The script also requires the following packages to be installed 
-```
-pip install python-dateutil
-pip install requests
-pip install simplejson
-pip install fuzzywuzzy
-pip install python-levenshtein
-```
-If you run into trouble installing the python-levenstein package (it is optional) then check out this solution on StackOverflow http://stackoverflow.com/a/33163704
+#### I keep getting a message `SHOW_TITLE not found on server (pid=PID_NUMBER)` when trying to download using your script.
+_Cause_: The file is not available on the RÚV servers.
+
+The script performs an optimistic attempt to locate any show that is listed in the broadcasting programme. However the files are not guaranteed to be still available on the RÚV servers. This is the error that is shown in those cases.
+
+
