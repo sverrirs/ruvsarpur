@@ -332,6 +332,12 @@ def runMain():
       local_filename = "{0} - {1} ({2}).mp4".format(item['title'], 
                                                    item['showtime'][:10],
                                                    item['pid'])
+
+    # if on Windows, remove symbols that the filesystem doesn't like 
+    if(os.name == "nt"):      
+      for ch in ["\\","/",":","?","*","\"","<",">","|"]:
+         if ch in local_filename:
+           local_filename=local_filename.replace(ch," ")
     
     # If excluded then don't download
     if( not args.force and item['pid'] in previously_recorded ):
