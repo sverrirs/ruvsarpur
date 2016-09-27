@@ -4,6 +4,8 @@
 # RÚV Sarpur Download
 A python script that allows you to list, search and download TV shows off the Icelandic RÚV Sarpurinn website. 
 
+Project website at https://sverrirs.github.io/ruvsarpur/
+
 For a simpler in-browser alternative check out the cross browser bookmarklet at https://labs.sverrirs.com/ruvsarpur/
 
 # Requirements
