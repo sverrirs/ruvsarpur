@@ -20,7 +20,7 @@ Author: Sverrir Sigmundarson  info@sverrirs.com  https://www.sverrirs.com
 #      For alternative install http://stackoverflow.com/a/33163704
 
 
-import sys, pprint, os.path, re, io
+import sys, pprint, os.path, re
 import textwrap # For text wrapping in the console window
 from colorama import init, deinit # For colorized output to console windows (platform and shell independent)
 from termcolor import colored, cprint # For shorthand color printing to the console, https://pypi.python.org/pypi/termcolor
@@ -52,7 +52,7 @@ LOG_DIR="{0}/{1}".format(os.path.expanduser('~'),'.ruvsarpur')
 # Name of the log file containing the previously recorded shows
 PREV_LOG_FILE = "{0}/{1}".format(LOG_DIR,'prevrecorded.log')
 # Name of the log file containing the downloaded tv schedule
-TVSCHEDULE_LOG_FILE = "{0}/{1}".format(LOG_DIR,'tvschedule.json')
+TV_SCHEDULE_LOG_FILE = "{0}/{1}".format(LOG_DIR, 'tvschedule.json')
 
 # The urls that should be tried when attempting to discover the actual video file on the server
 EP_URLS = [
@@ -168,7 +168,7 @@ def getShowtimes():
   
   schedule = {}
   schedule['date'] = today
-  
+
   schedule_xml = download_xml(url)
   if( schedule_xml is None):
     print("Could not download TV schedule, exiting")
@@ -195,7 +195,7 @@ def getShowtimes():
       if( not entry_details is None ):
         entry['desc'] = entry_details
         
-      # If the serie id is nothing then it is not a show (e.g. dagskrárlok)
+      # If the series id is nothing then it is not a show (e.g. dagskrárlok)
       if( not entry['sid'] ):
         continue
       
@@ -284,13 +284,13 @@ def saveCurrentTvSchedule(schedule):
   schedule['date'] = schedule['date'].strftime('%Y-%m-%d')
 
   #make sure that the log directory exists
-  os.makedirs(os.path.dirname(TVSCHEDULE_LOG_FILE), exist_ok=True)
+  os.makedirs(os.path.dirname(TV_SCHEDULE_LOG_FILE), exist_ok=True)
 
-  with io.open(TVSCHEDULE_LOG_FILE,'w+',encoding='utf-8') as out_file:
+  with open(TV_SCHEDULE_LOG_FILE, 'w+', encoding='utf-8') as out_file:
     out_file.write(json.dumps(schedule, ensure_ascii=False, sort_keys=True, indent=2*' '))
   
 def getExistingTvSchedule():
-  tv_file = Path(TVSCHEDULE_LOG_FILE)
+  tv_file = Path(TV_SCHEDULE_LOG_FILE)
   if tv_file.is_file():
     with tv_file.open('r+',encoding='utf-8') as in_file:
       existing = json.load(in_file)
