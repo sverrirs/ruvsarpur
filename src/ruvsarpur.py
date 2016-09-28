@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# coding=utf-8
 __version__ = "1.2.0"
 """
 Python script that allows you to download TV shows off the Icelandic RÚV Sarpurinn website.
@@ -288,8 +289,14 @@ def getExistingTvSchedule():
   else:
     return None
     
+def sanitizeFileName(local_filename):
+
+  #These are symbols that are not "kosher" on a NTFS filesystem.
+  local_filename = re.sub(r"[\"/:<>|?*\n\r\t\x00]", " ", local_filename)
+  return local_filename
+
 def createLocalFileName(show):
-  # Create the local filename, if not multiple episodes then 
+  # Create the local filename, if not multiple episodes then
   # append the date and pid to the filename to avoid conflicts
   if( 'ep_num' in show ):
     local_filename = "{0}.mp4".format(show['title'])
@@ -298,7 +305,7 @@ def createLocalFileName(show):
                                                  show['showtime'][:10],
                                                  show['pid'])
                                                  
-  return local_filename
+  return sanitizeFileName(local_filename)
     
 # The main entry point for the script
 def runMain():
