@@ -439,8 +439,8 @@ def runMain():
         # Store the id as already recorded 
         previously_recorded.append(item['pid'])
 
-    # Now save the list of already recorded shows back to file and exit
-    savePreviouslyRecordedShows(previously_recorded)
+        # Now save the list of already recorded shows back to file and exit
+        savePreviouslyRecordedShows(previously_recorded)
     
   finally:
     deinit() #Deinitialize the colorama library
