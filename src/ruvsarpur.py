@@ -20,7 +20,7 @@ Author: Sverrir Sigmundarson  info@sverrirs.com  https://www.sverrirs.com
 #      For alternative install http://stackoverflow.com/a/33163704
 
 
-import sys, pprint, os.path, re
+import sys, pprint, os.path, re, io
 import textwrap # For text wrapping in the console window
 from colorama import init, deinit # For colorized output to console windows (platform and shell independent)
 from termcolor import colored, cprint # For shorthand color printing to the console, https://pypi.python.org/pypi/termcolor
@@ -286,13 +286,13 @@ def saveCurrentTvSchedule(schedule):
   #make sure that the log directory exists
   os.makedirs(os.path.dirname(TVSCHEDULE_LOG_FILE), exist_ok=True)
 
-  with open(TVSCHEDULE_LOG_FILE,'w+') as out_file:
+  with io.open(TVSCHEDULE_LOG_FILE,'w+',encoding='utf-8') as out_file:
     out_file.write(json.dumps(schedule, ensure_ascii=False, sort_keys=True, indent=2*' '))
   
 def getExistingTvSchedule():
   tv_file = Path(TVSCHEDULE_LOG_FILE)
   if tv_file.is_file():
-    with tv_file.open('r+') as in_file:
+    with tv_file.open('r+',encoding='utf-8') as in_file:
       existing = json.load(in_file)
     
     # format the date field
