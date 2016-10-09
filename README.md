@@ -8,6 +8,11 @@ Project website at https://sverrirs.github.io/ruvsarpur/
 
 For a simpler in-browser alternative check out the cross browser bookmarklet at https://labs.sverrirs.com/ruvsarpur/
 
+# Demo
+<p align="center">
+  <img src="https://raw.githubusercontent.com/sverrirs/ruvsarpur/master/img/demo01.gif" alt="Usage Demo" title="Usage Demo">
+</p>
+
 # Requirements
 Python version 3.x
 
