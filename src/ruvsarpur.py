@@ -233,9 +233,9 @@ def parseArguments():
   
   parser.add_argument("-o", "--output", help="The path to the folder where the downloaded files should be stored",
                                         type=str)
-  parser.add_argument("--sid", help="The series id for the tv series that should be downloaded",
+  parser.add_argument("--sid", help="The series ids for the tv series that should be downloaded",
                                type=str, nargs="+")
-  parser.add_argument("--pid", help="The program id for a specific program entry that should be downloaded",
+  parser.add_argument("--pid", help="The program ids for the program entries that should be downloaded",
                                type=str, nargs="+")
 
   parser.add_argument("-c", "--category", 
