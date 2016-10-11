@@ -46,6 +46,13 @@ color_progress_fill = lambda x: colored(x, 'green')
 color_progress_remaining = lambda x: colored(x, 'white')
 color_progress_percent = lambda x: colored(x, 'green')
 
+# The name of the directory used to store log files.  The directory will be located in the users home directory
+LOG_DIR="{0}/{1}".format(os.path.expanduser('~'),'.ruvsarpur')
+
+# Name of the log file containing the previously recorded shows
+PREV_LOG_FILE = "{0}/{1}".format(LOG_DIR,'prevrecorded.log')
+# Name of the log file containing the downloaded tv schedule
+TV_SCHEDULE_LOG_FILE = "{0}/{1}".format(LOG_DIR, 'tvschedule.json')
 
 # The urls that should be tried when attempting to discover the actual video file on the server
 EP_URLS = [
@@ -161,7 +168,7 @@ def getShowtimes():
   
   schedule = {}
   schedule['date'] = today
-  
+
   schedule_xml = download_xml(url)
   if( schedule_xml is None):
     print("Could not download TV schedule, exiting")
@@ -188,7 +195,7 @@ def getShowtimes():
       if( not entry_details is None ):
         entry['desc'] = entry_details
         
-      # If the serie id is nothing then it is not a show (e.g. dagskrárlok)
+      # If the series id is nothing then it is not a show (e.g. dagskrárlok)
       if( not entry['sid'] ):
         continue
       
@@ -256,13 +263,16 @@ def parseArguments():
  
 # Saves a list of program ids to a file
 def savePreviouslyRecordedShows(pids):
-  with open('prevrecorded.log', 'w+') as thefile:
+  #make sure that the directory exists
+  os.makedirs(os.path.dirname(PREV_LOG_FILE), exist_ok=True)
+
+  with open(PREV_LOG_FILE, 'w+') as thefile:
     for item in pids:
       thefile.write("%s\n" % item)
 
 # Gets a list of program ids from a file
 def getPreviouslyRecordedShows():
-  rec_file = Path('prevrecorded.log')
+  rec_file = Path(PREV_LOG_FILE)
   if rec_file.is_file():
     lines = [line.rstrip('\n') for line in rec_file.open('r+')]
     return lines
@@ -272,14 +282,17 @@ def getPreviouslyRecordedShows():
 def saveCurrentTvSchedule(schedule):
   # Format the date field
   schedule['date'] = schedule['date'].strftime('%Y-%m-%d')
-  
-  with open('tvschedule.log','w+') as out_file:
+
+  #make sure that the log directory exists
+  os.makedirs(os.path.dirname(TV_SCHEDULE_LOG_FILE), exist_ok=True)
+
+  with open(TV_SCHEDULE_LOG_FILE, 'w+', encoding='utf-8') as out_file:
     out_file.write(json.dumps(schedule, ensure_ascii=False, sort_keys=True, indent=2*' '))
   
 def getExistingTvSchedule():
-  tv_file = Path('tvschedule.log')
+  tv_file = Path(TV_SCHEDULE_LOG_FILE)
   if tv_file.is_file():
-    with tv_file.open('r+') as in_file:
+    with tv_file.open('r+',encoding='utf-8') as in_file:
       existing = json.load(in_file)
     
     # format the date field
