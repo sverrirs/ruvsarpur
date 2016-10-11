@@ -20,10 +20,10 @@ Author: Sverrir Sigmundarson  info@sverrirs.com  https://www.sverrirs.com
 #      For alternative install http://stackoverflow.com/a/33163704
 
 
-import sys, pprint, os.path, re
+import sys, os.path, re
 import textwrap # For text wrapping in the console window
 from colorama import init, deinit # For colorized output to console windows (platform and shell independent)
-from termcolor import colored, cprint # For shorthand color printing to the console, https://pypi.python.org/pypi/termcolor
+from termcolor import colored # For shorthand color printing to the console, https://pypi.python.org/pypi/termcolor
 from pathlib import Path # to check for file existence in the file system
 import json # To store and load the tv schedule that has already been downloaded
 import argparse # Command-line argument parser
@@ -31,7 +31,7 @@ import requests # Downloading of data from HTTP
 import datetime, dateutil.relativedelta # Formatting of date objects and adjusting date ranges
 from xml.etree import ElementTree  # Parsing of TV schedule XML data
 from fuzzywuzzy import fuzz # For fuzzy string matching when trying to find programs by title or description
-from operator import itemgetter, attrgetter # For sorting the download list items https://docs.python.org/3/howto/sorting.html#operator-module-functions
+from operator import itemgetter # For sorting the download list items https://docs.python.org/3/howto/sorting.html#operator-module-functions
 import ntpath # Used to extract file name from path for all platforms http://stackoverflow.com/a/8384788
 
 # Lambdas as shorthands for printing various types of data
@@ -264,7 +264,7 @@ def parseArguments():
   return parser.parse_args()
  
 # Appends the config directory to config file names
-def appendConfigDirectory(portable, file_name):
+def createFullConfigFileName(portable, file_name):
   if portable :
     return "./{0}".format(file_name)
   else:
@@ -272,38 +272,35 @@ def appendConfigDirectory(portable, file_name):
 
 
 # Saves a list of program ids to a file
-def savePreviouslyRecordedShows(pids,portable):
+def savePreviouslyRecordedShows(pids,rec_file_name):
   #make sure that the directory exists
-  rec_file = appendConfigDirectory(portable, PREV_LOG_FILE)
-  os.makedirs(os.path.dirname(rec_file), exist_ok=True)
+  os.makedirs(os.path.dirname(rec_file_name), exist_ok=True)
 
-  with open(rec_file, 'w+') as theFile:
+  with open(rec_file_name, 'w+') as theFile:
     for item in pids:
       theFile.write("%s\n" % item)
 
 # Gets a list of program ids from a file
-def getPreviouslyRecordedShows(portable):
-  rec_file = Path(appendConfigDirectory(portable, PREV_LOG_FILE))
+def getPreviouslyRecordedShows(rec_file_name):
+  rec_file = Path(rec_file_name)
   if rec_file.is_file():
     lines = [line.rstrip('\n') for line in rec_file.open('r+')]
     return lines
   else:
     return []
 
-def saveCurrentTvSchedule(schedule,portable):
+def saveCurrentTvSchedule(schedule,tv_file_name):
   # Format the date field
   schedule['date'] = schedule['date'].strftime('%Y-%m-%d')
 
-  tv_file = appendConfigDirectory(portable,TV_SCHEDULE_LOG_FILE)
-
   #make sure that the log directory exists
-  os.makedirs(os.path.dirname(tv_file), exist_ok=True)
+  os.makedirs(os.path.dirname(tv_file_name), exist_ok=True)
 
-  with open(tv_file, 'w+', encoding='utf-8') as out_file:
+  with open(tv_file_name, 'w+', encoding='utf-8') as out_file:
     out_file.write(json.dumps(schedule, ensure_ascii=False, sort_keys=True, indent=2*' '))
   
-def getExistingTvSchedule(portable):
-  tv_file = Path(appendConfigDirectory(portable,TV_SCHEDULE_LOG_FILE))
+def getExistingTvSchedule(tv_file_name):
+  tv_file = Path(tv_file_name)
   if tv_file.is_file():
     with tv_file.open('r+',encoding='utf-8') as in_file:
       existing = json.load(in_file)
@@ -342,6 +339,10 @@ def runMain():
     
     # Construct the argument parser for the commandline
     args = parseArguments()
+
+    # Create the full filenames for the config files
+    previously_recorded_file_name = createFullConfigFileName(args.portable,PREV_LOG_FILE)
+    tv_schedule_file_name = createFullConfigFileName(args.portable,TV_SCHEDULE_LOG_FILE)
     
     # Check to see if date is set and construct the limit date
     filter_older_than_date = datetime.date.min
@@ -350,18 +351,18 @@ def runMain():
       filter_older_than_date = today - dateutil.relativedelta.relativedelta(days=args.days)
     
     # Get information about already downloaded episodes
-    previously_recorded = getPreviouslyRecordedShows(args.portable)
+    previously_recorded = getPreviouslyRecordedShows(previously_recorded_file_name)
 
     # Get an existing tv schedule if possible
     if( not args.refresh ):
-      schedule = getExistingTvSchedule(args.portable)
+      schedule = getExistingTvSchedule(tv_schedule_file_name)
     
     if( args.refresh or schedule is None or schedule['date'].date() < today ):
       print("Updating TV Schedule")
       schedule = getShowTimes()
       
     # Save the tv schedule as the most current one
-    saveCurrentTvSchedule(schedule,args.portable)
+    saveCurrentTvSchedule(schedule,tv_schedule_file_name)
     
     if( args.debug ):
       for key, schedule_item in schedule.items():
@@ -453,7 +454,7 @@ def runMain():
         previously_recorded.append(item['pid'])
 
         # Now save the list of already recorded shows back to file and exit
-        savePreviouslyRecordedShows(previously_recorded,args.portable)
+        savePreviouslyRecordedShows(previously_recorded,previously_recorded_file_name)
     
   finally:
     deinit() #Deinitialize the colorama library
