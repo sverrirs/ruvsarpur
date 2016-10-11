@@ -234,9 +234,9 @@ def parseArguments():
   parser.add_argument("-o", "--output", help="The path to the folder where the downloaded files should be stored",
                                         type=str)
   parser.add_argument("--sid", help="The series id for the tv series that should be downloaded",
-                               type=str)
+                               type=str, nargs="+")
   parser.add_argument("--pid", help="The program id for a specific program entry that should be downloaded",
-                               type=str) 
+                               type=str, nargs="+")
 
   parser.add_argument("-c", "--category", 
                             choices=[1,2,3,4,5,6,7,9,13,17],
@@ -393,10 +393,10 @@ def runMain():
       
       # if the series id is set then find all shows belonging to that series
       if( args.sid is not None ):
-        if( 'sid' in schedule_item and args.sid == schedule_item['sid'] ):
+        if( 'sid' in schedule_item and schedule_item['sid'] in args.sid):
           download_list.append(schedule_item)
       elif( args.pid is not None ):
-        if( 'pid' in schedule_item and args.pid == schedule_item['pid'] ):
+        if( 'pid' in schedule_item and schedule_item['pid'] in args.pid):
           download_list.append(schedule_item)
       elif( args.find is not None ):
         if( 'title' in schedule_item and fuzz.partial_ratio( args.find, schedule_item['title'] ) > 80 ):
@@ -453,7 +453,7 @@ def runMain():
         # Store the id as already recorded 
         previously_recorded.append(item['pid'])
 
-        # Now save the list of already recorded shows back to file and exit
+        # Save the list of already recorded shows back to file
         savePreviouslyRecordedShows(previously_recorded,previously_recorded_file_name)
     
   finally:
