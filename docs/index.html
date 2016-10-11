@@ -115,6 +115,11 @@ python ruvsarpur.py --help
 <div class="code">python ruvsarpur.py --list --refresh
 </div>
 
+<p>The script stores, by default, all of its config files in the current user home directory in a folder named '.ruvsarpur'. Use the <code>--portable</code> command line option to make the script store all configuration files in the current working directory.</p>
+
+<div class="code">python ruvsarpur.py --portable --list
+</div>
+
 <p>To find shows by title use the <code>--find</code> argument</p>
 
 <div class="code">python ruvsarpur.py --list --find "Hvolpa"
@@ -208,13 +213,6 @@ python ruvsarpur.py --list --find "Hvolpa" --desc
 <p>You can additionally add the <code>--days</code> argument to only include shows from the N number of previous days (e.g. specify 1 if you intend to run this script every day, 7 if you only intend to run it once a week etc)</p>
 
 <div class="code">python ruvsarpur.py --sid 18457 --days 7  -o "c:\videos\ruv"
-</div>
-
-<h1><a id="portable-mode" class="anchor" href="#portable-mode" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>Portable mode</h1>
-
-<p>This script stores, by default, all of its config files in the current user home directory in a folder named '.ruvsarpur'. The <code>--portable</code> command line option changes this and makes the script store all configuration files in the directory you run it from.</p>
-
-<div class="code">python ruvsarpur.py --portable --list
 </div>
 
 <h1><a id="faq" class="anchor" href="#faq" aria-hidden="true"></a>Frequently Asked Questions</h1>

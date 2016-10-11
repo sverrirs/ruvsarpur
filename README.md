@@ -44,6 +44,12 @@ The script downloads the tv schedule for the last month (that is the default ava
 python ruvsarpur.py --list --refresh
 ```
 
+The script stores, by default, all of its config files in the current user home directory in a folder named '.ruvsarpur'. Use the `--portable` command line option to make the script store all configuration files in the current working directory.
+
+```
+python ruvsarpur.py --portable --list
+```
+
 To find shows by title use the `--find` argument
 ```
 python ruvsarpur.py --list --find "Hvolpa"
@@ -134,14 +140,6 @@ You can additionally add the `--days` argument to only include shows from the N 
 ```
 python ruvsarpur.py --sid 18457 --days 7  -o "c:\videos\ruv"
 ```
-
-# Portable mode
-This script stores, by default, all of its config files in the current user home directory in a folder named '.ruvsarpur'. The `--portable` command line option changes this and makes the script store all configuration files in the directory you run it from.
-
-```
-python ruvsarpur.py --portable --list
-```
-
 # Frequently Asked Questions
 
 #### I keep getting a message `SHOW_TITLE not found on server (pid=PID_NUMBER)` when trying to download using your script.
