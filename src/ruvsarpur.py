@@ -50,9 +50,9 @@ color_progress_percent = lambda x: colored(x, 'green')
 LOG_DIR="{0}/{1}".format(os.path.expanduser('~'),'.ruvsarpur')
 
 # Name of the log file containing the previously recorded shows
-PREV_LOG_FILE = "{0}/{1}".format(LOG_DIR,'prevrecorded.log')
+PREV_LOG_FILE = 'prevrecorded.log'
 # Name of the log file containing the downloaded tv schedule
-TV_SCHEDULE_LOG_FILE = "{0}/{1}".format(LOG_DIR, 'tvschedule.json')
+TV_SCHEDULE_LOG_FILE = 'tvschedule.json'
 
 # The urls that should be tried when attempting to discover the actual video file on the server
 EP_URLS = [
@@ -158,7 +158,7 @@ def getShowDetailsText(entry_xml):
   # Nothing was found
   return None
     
-def getShowtimes():
+def getShowTimes():
   today = datetime.date.today()
   # Subtract a whole month from the today date
   last_month = today - dateutil.relativedelta.relativedelta(months=1)
@@ -258,39 +258,52 @@ def parseArguments():
   parser.add_argument("--desc", help="Displays show description text when available", action="store_true")
   
   parser.add_argument("-d", "--debug", help="Prints out extra debugging information while script is running", action="store_true")
+
+  parser.add_argument("-p","--portable", help="Saves the tv schedule and the download log in the current directory instead of {0}".format(LOG_DIR), action="store_true")
   
   return parser.parse_args()
  
-# Saves a list of program ids to a file
-def savePreviouslyRecordedShows(pids):
-  #make sure that the directory exists
-  os.makedirs(os.path.dirname(PREV_LOG_FILE), exist_ok=True)
+# Appends the config directory to config file names
+def appendConfigDirectory(portable, file_name):
+  if portable :
+    return "./{0}".format(file_name)
+  else:
+    return "{0}/{1}".format(LOG_DIR,file_name)
 
-  with open(PREV_LOG_FILE, 'w+') as thefile:
+
+# Saves a list of program ids to a file
+def savePreviouslyRecordedShows(pids,portable):
+  #make sure that the directory exists
+  rec_file = appendConfigDirectory(portable, PREV_LOG_FILE)
+  os.makedirs(os.path.dirname(rec_file), exist_ok=True)
+
+  with open(rec_file, 'w+') as theFile:
     for item in pids:
-      thefile.write("%s\n" % item)
+      theFile.write("%s\n" % item)
 
 # Gets a list of program ids from a file
-def getPreviouslyRecordedShows():
-  rec_file = Path(PREV_LOG_FILE)
+def getPreviouslyRecordedShows(portable):
+  rec_file = Path(appendConfigDirectory(portable, PREV_LOG_FILE))
   if rec_file.is_file():
     lines = [line.rstrip('\n') for line in rec_file.open('r+')]
     return lines
   else:
     return []
 
-def saveCurrentTvSchedule(schedule):
+def saveCurrentTvSchedule(schedule,portable):
   # Format the date field
   schedule['date'] = schedule['date'].strftime('%Y-%m-%d')
 
-  #make sure that the log directory exists
-  os.makedirs(os.path.dirname(TV_SCHEDULE_LOG_FILE), exist_ok=True)
+  tv_file = appendConfigDirectory(portable,TV_SCHEDULE_LOG_FILE)
 
-  with open(TV_SCHEDULE_LOG_FILE, 'w+', encoding='utf-8') as out_file:
+  #make sure that the log directory exists
+  os.makedirs(os.path.dirname(tv_file), exist_ok=True)
+
+  with open(tv_file, 'w+', encoding='utf-8') as out_file:
     out_file.write(json.dumps(schedule, ensure_ascii=False, sort_keys=True, indent=2*' '))
   
-def getExistingTvSchedule():
-  tv_file = Path(TV_SCHEDULE_LOG_FILE)
+def getExistingTvSchedule(portable):
+  tv_file = Path(appendConfigDirectory(portable,TV_SCHEDULE_LOG_FILE))
   if tv_file.is_file():
     with tv_file.open('r+',encoding='utf-8') as in_file:
       existing = json.load(in_file)
@@ -337,18 +350,18 @@ def runMain():
       filter_older_than_date = today - dateutil.relativedelta.relativedelta(days=args.days)
     
     # Get information about already downloaded episodes
-    previously_recorded = getPreviouslyRecordedShows()
+    previously_recorded = getPreviouslyRecordedShows(args.portable)
 
     # Get an existing tv schedule if possible
     if( not args.refresh ):
-      schedule = getExistingTvSchedule()
+      schedule = getExistingTvSchedule(args.portable)
     
     if( args.refresh or schedule is None or schedule['date'].date() < today ):
       print("Updating TV Schedule")
-      schedule = getShowtimes()
+      schedule = getShowTimes()
       
     # Save the tv schedule as the most current one
-    saveCurrentTvSchedule(schedule)
+    saveCurrentTvSchedule(schedule,args.portable)
     
     if( args.debug ):
       for key, schedule_item in schedule.items():
@@ -440,7 +453,7 @@ def runMain():
         previously_recorded.append(item['pid'])
 
         # Now save the list of already recorded shows back to file and exit
-        savePreviouslyRecordedShows(previously_recorded)
+        savePreviouslyRecordedShows(previously_recorded,args.portable)
     
   finally:
     deinit() #Deinitialize the colorama library
