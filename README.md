@@ -93,6 +93,15 @@ Using the `--pid` will only download a single episode
 python ruvsarpur.py --pid 4849075
 ```
 
+Both the `--sid` and `--pid` parameters support multiple ids
+
+```
+python ruvsarpur.py --sid 18457 21810
+```
+```
+python ruvsarpur.py --pid 4849075 4852060 4849078
+```
+
 Use the `-o` or `--output` argument to control where the video files will be saved to. Please make sure that you don't end your path with a backwards slash.
 ```
 python ruvsarpur.py --pid 4849075 -o "c:\videos\ruv"
