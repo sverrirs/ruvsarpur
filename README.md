@@ -29,7 +29,7 @@ pip install python-levenshtein
 If you run into trouble installing the python-levenstein package (it is optional) then check out this solution on StackOverflow http://stackoverflow.com/a/33163704
 
 ## Contributing
-Please use a pull/rebase `git pull --rebase origin master` when merging changes into master to avoid unnecessary merge commits.
+Please use a pull/rebase, e.g. `git pull --rebase origin master` when merging changes from master to your branch to avoid unnecessary merge commits.
 
 # Finding and listing shows
 After downloading the script can be run by typing in
