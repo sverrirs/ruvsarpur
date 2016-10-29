@@ -9,6 +9,12 @@ See: https://github.com/sverrirs/ruvsarpur
 Author: Sverrir Sigmundarson  info@sverrirs.com  https://www.sverrirs.com
 """
 
+# DEBUG: If you get an error such as:
+#   UnicodeEncodeError: 'charmap' codec can't encode character '\u2010': character maps to <undefined>
+# Set your console to use utf-8 encoding by issuing this statement:
+#    chcp 65001
+# The output will be a little garbled but at least you will be able to dump utf-8 data to the console 
+
 # Requires the following
 #   pip install colorama
 #   pip install termcolor
@@ -18,7 +24,6 @@ Author: Sverrir Sigmundarson  info@sverrirs.com  https://www.sverrirs.com
 #   pip install fuzzywuzzy
 #   pip install python-levenshtein
 #      For alternative install http://stackoverflow.com/a/33163704
-
 
 import sys, os.path, re
 import textwrap # For text wrapping in the console window
@@ -260,6 +265,8 @@ def parseArguments():
   parser.add_argument("-d", "--debug", help="Prints out extra debugging information while script is running", action="store_true")
 
   parser.add_argument("-p","--portable", help="Saves the tv schedule and the download log in the current directory instead of {0}".format(LOG_DIR), action="store_true")
+
+  parser.add_argument("--new", help="Filters the list of results to only show recently added shows (shows that have just had their first episode aired)", action="store_true")
   
   return parser.parse_args()
  
@@ -391,19 +398,30 @@ def runMain():
             print("Excluded show '"+schedule_item['title']+"' "+schedule_item['pid']+ " is not in category '"+str(args.category)+"'")
         continue
       
+      candidate_to_add = None
       # if the series id is set then find all shows belonging to that series
       if( args.sid is not None ):
         if( 'sid' in schedule_item and schedule_item['sid'] in args.sid):
-          download_list.append(schedule_item)
+          candidate_to_add = schedule_item
       elif( args.pid is not None ):
         if( 'pid' in schedule_item and schedule_item['pid'] in args.pid):
-          download_list.append(schedule_item)
+          candidate_to_add = schedule_item
       elif( args.find is not None ):
         if( 'title' in schedule_item and fuzz.partial_ratio( args.find, schedule_item['title'] ) > 80 ):
-          download_list.append(schedule_item)
+          candidate_to_add = schedule_item
       else:
         # By default if there is no filtering then we simply list everything in the schedule
-        download_list.append(schedule_item)
+        candidate_to_add = schedule_item
+
+      # If the only new episode filter is set then only include shows that have recently started airing
+      if( args.new ):
+        # If the show is not a repeat show or hasn't got more than a single episode in total then it isn't considered a show so exclude it
+        if( not 'ep_num' in schedule_item or not 'ep_total' in schedule_item or int( schedule_item['ep_total']) < 2 or int(schedule_item['ep_num']) > 1 ):
+          candidate_to_add = None # If the show is beyond ep 1 then it cannot be considered a new show so i'm not going to add it
+
+      # Now process the adding of the show if all the filter criteria were satisified
+      if( candidate_to_add is not None ):
+          download_list.append(candidate_to_add)
       
     total_items = len(download_list)
     if( total_items <= 0 ):

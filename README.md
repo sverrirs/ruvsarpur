@@ -138,6 +138,11 @@ The `--days` argument can be used to filter the list by only listing shows added
 python ruvsarpur.py --list --category 1 --days 1
 ```
 
+The the `--new` flag limits the search and downloads to only new shows (e.g. shows that have just aired their first episode in a new multi-episode series). The example below will only list new children's shows on the TV schedule. 
+```
+python ruvsarpur.py --list --category 1 --new
+```
+
 # Scheduling downloads
 You can schedule this script to run periodically to download new episodes in a series. Use the `--sid` option to monitor a particular tv series and `-o` to set the directory to save the video file into.
 ```
