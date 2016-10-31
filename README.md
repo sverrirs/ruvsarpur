@@ -115,6 +115,13 @@ The script keeps track of the shows that have already been downloaded. You can f
 python ruvsarpur.py --pid 4849075 --force
 ```
 
+If recoding history has been lost, files copied between machines or they are incorrectly labelled as previously recorded there is a `--softforce` switch available. 
+When this switch is specified the script will check to see if the video file exists on the user's machine before attempting a re-download. If it doesn't exist then it will 
+start the download, if the file exists it will skip it.
+```
+python ruvsarpur.py --pid 4849075 --softforce
+```
+
 # Advanced uses
 
 Using `--category` argument allows you to filter the tv schedule by category. For example to list only childrens tv shows use the category number 1

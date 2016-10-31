@@ -184,6 +184,13 @@ python ruvsarpur.py --list --find "Hvolpa" --desc
 <div class="code">python ruvsarpur.py --pid 4849075 --force
 </div>
 
+<p>If recoding history has been lost, files copied between machines or they are incorrectly labelled as previously recorded there is a <code>--softforce</code> switch available. 
+When this switch is specified the script will check to see if the video file exists on the user's machine before attempting a re-download. If it doesn't exist then it will 
+start the download, if the file exists it will skip it.</p>
+
+<div class="code">python ruvsarpur.py --pid 4849075 --softforce
+</div>
+
 <h1><a id="user-content-advanced-uses" class="anchor" href="#advanced-uses" aria-hidden="true"></a>Advanced uses</h1>
 
 <p>Using <code>--category</code> argument allows you to filter the tv schedule by category. For example to list only childrens tv shows use the category number 1</p>

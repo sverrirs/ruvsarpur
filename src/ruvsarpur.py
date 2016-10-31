@@ -38,6 +38,7 @@ from xml.etree import ElementTree  # Parsing of TV schedule XML data
 from fuzzywuzzy import fuzz # For fuzzy string matching when trying to find programs by title or description
 from operator import itemgetter # For sorting the download list items https://docs.python.org/3/howto/sorting.html#operator-module-functions
 import ntpath # Used to extract file name from path for all platforms http://stackoverflow.com/a/8384788
+import glob # Used to do partial file path matching (when searching for already downloaded files) http://stackoverflow.com/a/2225582/779521
 
 # Lambdas as shorthands for printing various types of data
 # See https://pypi.python.org/pypi/termcolor for more info
@@ -95,6 +96,7 @@ def printProgress (iteration, total, prefix = '', suffix = '', decimals = 1, bar
 # Downloads a file using Requests
 # From: http://stackoverflow.com/a/16696317
 def download_file(url, local_filename ):
+  try:
     # NOTE the stream=True parameter
     r = requests.get(url, stream=True)
     
@@ -122,6 +124,14 @@ def download_file(url, local_filename ):
     # Write one extra line break after operation finishes otherwise the subsequent prints will end up in the same line
     sys.stdout.write('\n')
     return local_filename
+  except:
+    print( "Interrupted: Deleting partial file '{0}'".format(ntpath.basename(local_filename)))
+    try:
+      os.remove(local_filename)
+    except:
+      print( "Could not delete partial file. Please remove the file manually '{0}'".format(local_filename))
+      raise
+  raise
 
 # Attempts to locate the video file for a certain program id on the server
 # when the file is located it is downloaded and then the logic stops, if nothing is 
@@ -255,6 +265,8 @@ def parseArguments():
                                type=int)  
 
   parser.add_argument("--refresh", help="Refreshes the TV schedule data", action="store_true")
+
+  parser.add_argument("--softforce", help="Does a local file-name search in the output folder for the intended file. If the file is not found then it will be re-downloaded.", action="store_true")
   
   parser.add_argument("--force", help="Forces the program to re-download shows", action="store_true")
   
@@ -450,21 +462,27 @@ def runMain():
       # Print out item number
       print( "{0} of {1}".format(curr_item, total_items))
       curr_item += 1 # Count the file
-      
-      # If excluded then don't download
-      if( not args.force and item['pid'] in previously_recorded ):
-        print("'{0}' already recorded (pid={1})".format(color_title(local_filename), item['pid']))
-        continue
-        
+
       # If the output directory is set then check if it exists and create it if it is not
       # pre-pend it to the file name then
       if( args.output is not None ):
         if not os.path.exists(args.output):
           os.makedirs(args.output)
           
-        # Now prepend the directory to the filename
-        local_filename = os.path.join(args.output, local_filename)
-      
+      # Now prepend the directory to the filename
+      local_filename = os.path.join(args.output, local_filename)
+
+      # If the file has already been registered as downloaded then don't attempt to re-download
+      if( not args.force and item['pid'] in previously_recorded ):
+        # Unless we have soft-force enabled, search for the file name on the local machine
+        # if the file name is not found only then re-download the file,
+        # Using glob as I allow partial renaming of the file as long as the original part is left untouched
+        # Meaning you can rename files to "Original Show Name (2 of 4) HERE IS MY CUSTOM EXTRA NAME.mp4"
+        fileSearchString = local_filename.split(".mp4")[0]+"*.mp4"
+        if( not args.softforce or glob.glob(fileSearchString)):
+          print("'{0}' already recorded (pid={1})".format(color_title(local_filename), item['pid']))
+          continue
+        
       # Download the file
       result = find_and_download_file(item['pid'], local_filename)
       if( not result is None ):
