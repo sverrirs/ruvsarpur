@@ -179,15 +179,17 @@ def getShowDetailsText(entry_xml):
   # Nothing was found
   return None
     
-def getShowTimes():
+def getShowTimes(days_back = 0):
   today = datetime.date.today()
-  # Subtract a whole month from the today date
-  last_month = today - dateutil.relativedelta.relativedelta(months=1)
+  if( days_back <= 0 ):
+    # Default is getting all of last month, so subtract a whole month from the today date
+    from_date = today - dateutil.relativedelta.relativedelta(months=1)
+  else:
+    from_date = today - dateutil.relativedelta.relativedelta(days=days_back)
   
   # Construct the URL for the last month and download the TV schedule
-  url = "http://muninn.ruv.is/files/xml/ruv/{0}/{1}/$download".format(last_month.strftime('%Y-%m-%d'), today.strftime('%Y-%m-%d'))
-  print( url )
-  
+  url = "http://muninn.ruv.is/files/xml/ruv/{0}/{1}/$download".format(from_date.strftime('%Y-%m-%d'), today.strftime('%Y-%m-%d'))
+    
   schedule = {}
   schedule['date'] = today
 
@@ -390,8 +392,7 @@ def runMain():
     
     # Check to see if date is set and construct the limit date
     filter_older_than_date = datetime.date.min
-    if( args.days is not None and args.days > 0 and args.days < 30 ):
-      # Subtract a whole month from the today date
+    if( args.days is not None and args.days > 0 and args.days <= 31 ):
       filter_older_than_date = today - dateutil.relativedelta.relativedelta(days=args.days)
     
     # Get information about already downloaded episodes
@@ -402,8 +403,12 @@ def runMain():
       schedule = getExistingTvSchedule(tv_schedule_file_name)
     
     if( args.refresh or schedule is None or schedule['date'].date() < today ):
-      print("Updating TV Schedule")
-      schedule = getShowTimes()
+      if( args.days is not None and args.days > 0 ):
+        print("Updating TV Schedule {0} days into the past".format(args.days))
+        schedule = getShowTimes(args.days)
+      else: 
+        print("Updating TV Schedule for the last month")
+        schedule = getShowTimes()
       
     # Save the tv schedule as the most current one
     saveCurrentTvSchedule(schedule,tv_schedule_file_name)
