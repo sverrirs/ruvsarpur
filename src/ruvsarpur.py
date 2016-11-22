@@ -235,7 +235,7 @@ def getShowTimes():
           entry['title'] += " ("+entry['ep_num']+" af "+entry['ep_total']+")"
         else:
           # If it isn't a multi episode show then append the date to the title (to avoid overwriting files)
-          entry['title'] += " ("+datetime.datetime.now().strftime("%Y-%m-%d")+")"
+          entry['title'] += " ("+sanitizeFileName(entry['showtime'][:16], "") +")"
               
       # Save the entry into the main schedule
       schedule[entry['pid']] = entry
@@ -347,10 +347,10 @@ def getExistingTvSchedule(tv_file_name):
   else:
     return None
     
-def sanitizeFileName(local_filename):
+def sanitizeFileName(local_filename, sep=" "):
 
   #These are symbols that are not "kosher" on a NTFS filesystem.
-  local_filename = re.sub(r"[\"/:<>|?*\n\r\t\x00]", " ", local_filename)
+  local_filename = re.sub(r"[\"/:<>|?*\n\r\t\x00]", sep, local_filename)
   return local_filename
 
 def createLocalFileName(show):
