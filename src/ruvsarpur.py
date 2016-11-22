@@ -39,6 +39,7 @@ from fuzzywuzzy import fuzz # For fuzzy string matching when trying to find prog
 from operator import itemgetter # For sorting the download list items https://docs.python.org/3/howto/sorting.html#operator-module-functions
 import ntpath # Used to extract file name from path for all platforms http://stackoverflow.com/a/8384788
 import glob # Used to do partial file path matching (when searching for already downloaded files) http://stackoverflow.com/a/2225582/779521
+import uuid # Used to generate a ternary backup local filename if everything else fails.
 
 # Lambdas as shorthands for printing various types of data
 # See https://pypi.python.org/pypi/termcolor for more info
@@ -69,6 +70,7 @@ EP_URLS = [
 # Print console progress bar
 # http://stackoverflow.com/a/34325723
 def printProgress (iteration, total, prefix = '', suffix = '', decimals = 1, barLength = 100, color = True):
+  try:
     """
     Call in a loop to create terminal progress bar
     @params:
@@ -83,19 +85,21 @@ def printProgress (iteration, total, prefix = '', suffix = '', decimals = 1, bar
     percents        = formatStr.format(100 * (iteration / float(total)))
     filledLength    = int(round(barLength * iteration / float(total)))
     if( color ):
-      bar             = color_progress_fill('█' * filledLength) + color_progress_remaining('-' * (barLength - filledLength))
+      bar             = color_progress_fill('=' * filledLength) + color_progress_remaining('-' * (barLength - filledLength))
       sys.stdout.write('\r %s |%s| %s %s' % (prefix, bar, color_progress_percent(percents+'%'), suffix)),
     else:
-      bar             = '█' * filledLength + '-' * (barLength - filledLength)
+      bar             = '=' * filledLength + '-' * (barLength - filledLength)
       sys.stdout.write('\r %s |%s| %s %s' % (prefix, bar, percents+'%', suffix)),
       
     if iteration == total:
         sys.stdout.write('\n')
     sys.stdout.flush()
+  except: 
+    pass # Ignore all errors when printing progress
     
 # Downloads a file using Requests
 # From: http://stackoverflow.com/a/16696317
-def download_file(url, local_filename ):
+def download_file(url, local_filename, display_title, keeppartial = False ):
   try:
     # NOTE the stream=True parameter
     r = requests.get(url, stream=True)
@@ -108,7 +112,7 @@ def download_file(url, local_filename ):
     total_size_mb = str(int(total_size/1024.0/1024.0))
     completed_size = 0
         
-    print("{0} | Total: {1} MB".format(color_title(ntpath.basename(local_filename)), total_size_mb))
+    print("{0} | Total: {1} MB".format(color_title(display_title), total_size_mb))
     printProgress(completed_size, total_size, prefix = 'Downloading:', suffix = 'Starting', barLength = 25)
     
     with open(local_filename, 'wb') as f:
@@ -125,26 +129,28 @@ def download_file(url, local_filename ):
     sys.stdout.write('\n')
     return local_filename
   except:
-    print( "Interrupted: Deleting partial file '{0}'".format(ntpath.basename(local_filename)))
-    try:
-      os.remove(local_filename)
-    except:
-      print( "Could not delete partial file. Please remove the file manually '{0}'".format(local_filename))
-      raise
-  raise
+    print(os.linesep) # Double new line as otherwise the error message is squished to the download progress
+    if( not keeppartial ):
+      print( "Interrupted: Deleting partial file '{0}'".format(ntpath.basename(local_filename)))
+      try:
+        os.remove(local_filename)
+      except:
+        print( "Could not delete partial file. Please remove the file manually '{0}'".format(local_filename))
+        raise
+    raise
 
 # Attempts to locate the video file for a certain program id on the server
 # when the file is located it is downloaded and then the logic stops, if nothing is 
 # found then this function returns None
-def find_and_download_file(pid, local_filename ):
+def find_and_download_file(pid, local_filename, display_title, keeppartial = False):
 
   for url in EP_URLS:
     for r in range(30):
       url_formatted = url.format(pid, r)
-      if( not download_file(url_formatted, local_filename) is None ):
+      if( not download_file(url_formatted, local_filename, display_title, keeppartial) is None ):
         return local_filename
     
-  print( "{0} not found on server (pid={1})".format(color_title(ntpath.basename(local_filename)), pid))
+  print( "{0} not found on server (pid={1})".format(color_title(display_title), pid))
   return None
   
   
@@ -180,6 +186,7 @@ def getShowTimes():
   
   # Construct the URL for the last month and download the TV schedule
   url = "http://muninn.ruv.is/files/xml/ruv/{0}/{1}/$download".format(last_month.strftime('%Y-%m-%d'), today.strftime('%Y-%m-%d'))
+  print( url )
   
   schedule = {}
   schedule['date'] = today
@@ -226,6 +233,9 @@ def getShowTimes():
         if( int(entry['ep_total']) > 1 ):
           # Append the episode number to the show title if it is a real multi-episode show
           entry['title'] += " ("+entry['ep_num']+" af "+entry['ep_total']+")"
+        else:
+          # If it isn't a multi episode show then append the date to the title (to avoid overwriting files)
+          entry['title'] += " ("+datetime.datetime.now().strftime("%Y-%m-%d")+")"
               
       # Save the entry into the main schedule
       schedule[entry['pid']] = entry
@@ -266,13 +276,15 @@ def parseArguments():
 
   parser.add_argument("--refresh", help="Refreshes the TV schedule data", action="store_true")
 
-  parser.add_argument("--softforce", help="Does a local file-name search in the output folder for the intended file. If the file is not found then it will be re-downloaded.", action="store_true")
-  
   parser.add_argument("--force", help="Forces the program to re-download shows", action="store_true")
   
   parser.add_argument("--list", help="Only lists the items found but nothing is downloaded", action="store_true")
   
   parser.add_argument("--desc", help="Displays show description text when available", action="store_true")
+
+  parser.add_argument("--keeppartial", help="Keep partially downloaded files if the download is interrupted (default is to delete partial files)", action="store_true")
+
+  parser.add_argument("--checklocal", help="Checks to see if a local file with the same name already exists. If it exists then it is not re-downloaded but it's pid is stored in the recorded log (useful if moving between machines or if recording history is lost)'", action="store_true")
   
   parser.add_argument("-d", "--debug", help="Prints out extra debugging information while script is running", action="store_true")
 
@@ -291,12 +303,16 @@ def createFullConfigFileName(portable, file_name):
 
 
 # Saves a list of program ids to a file
-def savePreviouslyRecordedShows(pids,rec_file_name):
-  #make sure that the directory exists
+def appendNewPidAndSavePreviouslyRecordedShows(new_pid, previously_recorded_pids, rec_file_name):
+
+  # Store the new pid in memory first
+  previously_recorded_pids.append(new_pid)
+
+  # Make sure that the directory exists and then write the full list of pids to it
   os.makedirs(os.path.dirname(rec_file_name), exist_ok=True)
 
   with open(rec_file_name, 'w+') as theFile:
-    for item in pids:
+    for item in previously_recorded_pids:
       theFile.write("%s\n" % item)
 
 # Gets a list of program ids from a file
@@ -348,6 +364,15 @@ def createLocalFileName(show):
                                                  show['pid'])
                                                  
   return sanitizeFileName(local_filename)
+
+def isLocalFileNameUnique(local_filename):
+  # Check to see if the filename specified already exists, must be a complete path
+  ###########################
+  # Using glob as I allow partial renaming of the file as long as the original part is left untouched
+  # Meaning you can rename files to "Original Show Name (2 of 4) HERE IS MY CUSTOM EXTRA NAME.mp4"
+  fileSearchString = local_filename.split(".mp4")[0]+"*.mp4"
+  retval = glob.glob(fileSearchString)
+  return not retval
     
 # The main entry point for the script
 def runMain():
@@ -455,12 +480,11 @@ def runMain():
     
     curr_item = 1
     for item in download_list:
-      print("")
       # Get a valid name for the save file
       local_filename = createLocalFileName(item)
       
-      # Print out item number
-      print( "{0} of {1}".format(curr_item, total_items))
+      # Create the display title for the current episode (used in console output)
+      display_title = "{0} of {1}: {2}".format(curr_item, total_items, item['title']) 
       curr_item += 1 # Count the file
 
       # If the output directory is set then check if it exists and create it if it is not
@@ -468,29 +492,41 @@ def runMain():
       if( args.output is not None ):
         if not os.path.exists(args.output):
           os.makedirs(args.output)
-          
-      # Now prepend the directory to the filename
-      local_filename = os.path.join(args.output, local_filename)
+        # Now prepend the directory to the filename
+        local_filename = os.path.join(args.output, local_filename)
 
       # If the file has already been registered as downloaded then don't attempt to re-download
       if( not args.force and item['pid'] in previously_recorded ):
-        # Unless we have soft-force enabled, search for the file name on the local machine
-        # if the file name is not found only then re-download the file,
-        # Using glob as I allow partial renaming of the file as long as the original part is left untouched
-        # Meaning you can rename files to "Original Show Name (2 of 4) HERE IS MY CUSTOM EXTRA NAME.mp4"
-        fileSearchString = local_filename.split(".mp4")[0]+"*.mp4"
-        if( not args.softforce or glob.glob(fileSearchString)):
-          print("'{0}' already recorded (pid={1})".format(color_title(local_filename), item['pid']))
-          continue
-        
-      # Download the file
-      result = find_and_download_file(item['pid'], local_filename)
-      if( not result is None ):
-        # Store the id as already recorded 
-        previously_recorded.append(item['pid'])
+        print("'{0}' already recorded (pid={1})".format(color_title(display_title), item['pid']))
+        continue
 
+      # Before we attempt to download the file we should make sure we're not accidentally overwriting an existing file
+      if( not args.force and not args.checklocal):
+        # So, check for the existence of a file with the same name, if one is found then attempt to give
+        # our new file a different name and check again (append date and time), if still not unique then 
+        # create file name with guid, if still not unique then fail!
+        if( not isLocalFileNameUnique(local_filename) ):
+          # Check with date
+          local_filename = "{0}_{1}.mp4".format(local_filename.split(".mp4")[0], datetime.datetime.now().strftime("%Y-%m-%d"))
+          if( not isLocalFileNameUnique(local_filename)):
+            local_filename = "{0}_{1}.mp4".format(local_filename.split(".mp4")[0], str(uuid.uuid4()))
+            if( not isLocalFileNameUnique(local_filename)):      
+              print("Error: unabled to create a local file name for '{0}', check your output folder (pid={1})".format(color_title(display_title), item['pid']))
+              continue
+
+      # If the checklocal option is enabled then we don't want to try to download unless force is set
+      if( not args.force and args.checklocal and not isLocalFileNameUnique(local_filename) ):
+        # Store the id as already recorded and save to the file 
+        print("'{0}' found locally and marked as already recorded (pid={1})".format(color_title(display_title), item['pid']))
+        appendNewPidAndSavePreviouslyRecordedShows(item['pid'], previously_recorded, previously_recorded_file_name)
+        continue
+
+      #############################################
+      # Download the file to the local computer and if everything was OK then save the pid as successfully downloaded
+      result = find_and_download_file(item['pid'], local_filename, display_title, args.keeppartial)
+      if( not result is None ):
         # Save the list of already recorded shows back to file
-        savePreviouslyRecordedShows(previously_recorded,previously_recorded_file_name)
+        appendNewPidAndSavePreviouslyRecordedShows(item['pid'], previously_recorded, previously_recorded_file_name)
     
   finally:
     deinit() #Deinitialize the colorama library

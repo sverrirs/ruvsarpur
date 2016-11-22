@@ -184,11 +184,10 @@ python ruvsarpur.py --list --find "Hvolpa" --desc
 <div class="code">python ruvsarpur.py --pid 4849075 --force
 </div>
 
-<p>If recoding history has been lost, files copied between machines or they are incorrectly labelled as previously recorded there is a <code>--softforce</code> switch available. 
-When this switch is specified the script will check to see if the video file exists on the user's machine before attempting a re-download. If it doesn't exist then it will 
-start the download, if the file exists it will skip it.</p>
+<p>If recoding history has been lost, files copied between machines or they are incorrectly labelled as previously recorded there is a <code>--checklocal</code> switch available.
+When this switch is specified the script will check to see if the video file exists on the user's machine before attempting a re-download. If it doesn't exist then it will start the download, if the file exists it will record it's pid as recorded and skip re-downloading it.</p>
 
-<div class="code">python ruvsarpur.py --pid 4849075 --softforce
+<div class="code">python ruvsarpur.py --pid 4849075 --checklocal
 </div>
 
 <h1><a id="user-content-advanced-uses" class="anchor" href="#advanced-uses" aria-hidden="true"></a>Advanced uses</h1>
@@ -224,17 +223,31 @@ start the download, if the file exists it will skip it.</p>
 <div class="code">python ruvsarpur.py --list --category 1 --new
 </div>
 
+<p>By default the script deletes any incomplete partially downloaded files if an error occurs <code>--keeppartial</code> flag can be used to keep partially downloaded files in case of errors (they won't be deleted).</p>
+
 <h1>
 <a id="scheduling-downloads" class="anchor" href="#scheduling-downloads" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>Scheduling downloads</h1>
 
-<p>You can schedule this script to run periodically to download new episodes in a series. Use the <code>--sid</code> option to monitor a particular tv series and <code>-o</code> to set the directory to save the video file into.</p>
+<p>You can schedule this script to run periodically to download new episodes in a series. To have the script correctly handle downloading re-runs and new seasons then it is recommended to use the <code>--find</code> option and specify the series title.</p>
 
-<div class="code">python ruvsarpur.py --sid 18457 -o "c:\videos\ruv\hvolpasveit"
+<div class="code">python ruvsarpur.py --find "Hvolpasveitin" -o "c:\videos\ruv\hvolpasveit"
 </div>
+
+<blockquote>When running this in a bat or cmd file in windows ensure you include the following two lines at the top of the bat file
+<div class="code">@echo off
+chcp 1252
+</div>Otherwise the icelandic character set will not be correctly understood when the batch file is run
+</blockquote>
 
 <p>You can additionally add the <code>--days</code> argument to only include shows from the N number of previous days (e.g. specify 1 if you intend to run this script every day, 7 if you only intend to run it once a week etc)</p>
 
 <div class="code">python ruvsarpur.py --sid 18457 --days 7  -o "c:\videos\ruv"
+</div>
+
+<h2>Downloading only a particular season of a series</h2>
+<p>n the case you only want to download a particular run of a series then you should use the <code>--sid</code> option to monitor a particular tv series and <code>-o</code> to set the directory to save the video file into.</p>
+
+<div class="code">python ruvsarpur.py --sid 18457 -o "c:\videos\ruv\hvolpasveit-season-1"
 </div>
 
 <h1><a id="faq" class="anchor" href="#faq" aria-hidden="true"></a>Frequently Asked Questions</h1>

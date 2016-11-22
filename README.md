@@ -115,11 +115,11 @@ The script keeps track of the shows that have already been downloaded. You can f
 python ruvsarpur.py --pid 4849075 --force
 ```
 
-If recoding history has been lost, files copied between machines or they are incorrectly labelled as previously recorded there is a `--softforce` switch available. 
-When this switch is specified the script will check to see if the video file exists on the user's machine before attempting a re-download. If it doesn't exist then it will 
-start the download, if the file exists it will skip it.
+If recoding history has been lost, files copied between machines or they are incorrectly labelled as previously recorded there is a `--checklocal` switch available. 
+
+When this switch is specified the script will check to see if the video file exists on the user's machine before attempting a re-download. If it doesn't exist then it will start the download, if the file exists it will record it's pid as recorded and skip re-downloading it.
 ```
-python ruvsarpur.py --pid 4849075 --softforce
+python ruvsarpur.py --pid 4849075 --checklocal
 ```
 
 # Advanced uses
@@ -153,17 +153,33 @@ The the `--new` flag limits the search and downloads to only new shows (e.g. sho
 python ruvsarpur.py --list --category 1 --new
 ```
 
+By default the script deletes any incomplete partially downloaded files if an error occurs `--keeppartial` flag can be used to keep partially downloaded files in case of errors (they won't be deleted).
+
 # Scheduling downloads
-You can schedule this script to run periodically to download new episodes in a series. Use the `--sid` option to monitor a particular tv series and `-o` to set the directory to save the video file into.
+You can schedule this script to run periodically to download new episodes in a series. To have the script correctly handle downloading re-runs and new seasons then it is recommended to use the `--find` option and specify the series title.
+
 ```
-python ruvsarpur.py --sid 18457 -o "c:\videos\ruv\hvolpasveit"
+python ruvsarpur.py --find "Hvolpasveitin" -o "c:\videos\ruv\hvolpasveit"
 ```
+
+> When running this in a bat or cmd file in windows ensure you include the following two lines at the top of the bat file
+> `@echo off`
+> `chcp 1252`
+> Otherwise the icelandic character set will not be correctly understood when the batch file is run
 
 You can additionally add the `--days` argument to only include shows from the N number of previous days (e.g. specify 1 if you intend to run this script every day, 7 if you only intend to run it once a week etc)
 
 ```
 python ruvsarpur.py --sid 18457 --days 7  -o "c:\videos\ruv"
 ```
+
+## Downloading only a particular season of a series
+In the case you only want to download a particular run of a series then you should use the `--sid` option to monitor a particular tv series and `-o` to set the directory to save the video file into.
+
+```
+python ruvsarpur.py --sid 18457 -o "c:\videos\ruv\hvolpasveit-season-1"
+```  
+
 # Frequently Asked Questions
 
 #### I keep getting a message `SHOW_TITLE not found on server (pid=PID_NUMBER)` when trying to download using your script.
