@@ -153,7 +153,23 @@ The the `--new` flag limits the search and downloads to only new shows (e.g. sho
 python ruvsarpur.py --list --category 1 --new
 ```
 
-By default the script deletes any incomplete partially downloaded files if an error occurs `--keeppartial` flag can be used to keep partially downloaded files in case of errors (they won't be deleted).
+The `--keeppartial` flag can be used to keep partially downloaded files in case of errors, if omitted then the script deletes any incomplete partially downloaded files if an error occurs (this is the default behavior).
+
+
+Use `--originaltitle` flag to include the original show name (usually the foreign title) in the output file.
+```
+python ruvsarpur.py --list --find "Hvolpa" --originaltitle
+```
+which returns
+```
+Found 2 shows
+4852061: Hvolpasveitin (11 af 24) - Paw Patrol 
+  21810: Sýnt 2016-09-26 18:01
+
+4849078: Hvolpasveitin (20 af 26) - Paw Patrol
+  18457: Sýnt 2016-09-25 08:00
+```
+
 
 # Scheduling downloads
 You can schedule this script to run periodically to download new episodes in a series. To have the script correctly handle downloading re-runs and new seasons then it is recommended to use the `--find` option and specify the series title.

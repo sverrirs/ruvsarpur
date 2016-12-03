@@ -223,7 +223,21 @@ When this switch is specified the script will check to see if the video file exi
 <div class="code">python ruvsarpur.py --list --category 1 --new
 </div>
 
-<p>By default the script deletes any incomplete partially downloaded files if an error occurs <code>--keeppartial</code> flag can be used to keep partially downloaded files in case of errors (they won't be deleted).</p>
+<p>The <code>--keeppartial</code> flag can be used to keep partially downloaded files in case of errors, if omitted then the script deletes any incomplete partially downloaded files if an error occurs (this is the default behavior).</p>
+
+
+<p>Use <code>--originaltitle</code> flag to include the original show name (usually the foreign title) in the output file.</p>
+
+<div class="code">python ruvsarpur.py --list --find "Hvolpa" --originaltitle
+</div>
+
+<div class="code">Found 2 shows<br>
+<pid>4852061</pid>: <eptitle>Hvolpasveitin (11 af 24) - Paw Patrol</eptitle><br>
+<sid>&nbsp;&nbsp;21810</sid>: Sýnt 2016-09-26 18:01<br>
+<br>
+<pid>4849078</pid>: <eptitle>Hvolpasveitin (20 af 26) - Paw Patrol</eptitle><br>
+<sid>&nbsp;&nbsp;18457</sid>: Sýnt 2016-09-25 08:00
+</div>
 
 <h1>
 <a id="scheduling-downloads" class="anchor" href="#scheduling-downloads" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>Scheduling downloads</h1>

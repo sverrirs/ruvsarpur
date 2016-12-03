@@ -218,6 +218,14 @@ def getShowTimes(days_back = 0):
       entry_details = getShowDetailsText(entry_xml)
       if( not entry_details is None ):
         entry['desc'] = entry_details
+
+      # Get the original title of the show
+      entry_org_title = entry_xml.find('original-title')
+      if( not entry_org_title is None ):
+        entry['original-title'] = entry_org_title.text
+
+      if( entry['title'] == "Fallið" ):
+          print( entry )
         
       # If the series id is nothing then it is not a show (e.g. dagskrárlok)
       if( not entry['sid'] ):
@@ -248,7 +256,7 @@ def printTvShowDetails(args, show):
   if( not 'pid' in show ):
     return
       
-  print( color_pid(show['pid'])+ ": "+color_title(show['title']))
+  print( color_pid(show['pid'])+ ": "+color_title(createShowTitle(show, args.originaltitle)))
   print( color_sid(show['sid'].rjust(7)) + ": Sýnt "+show['showtime'][:-3] )
   if( args.desc and 'desc' in show ):
     for desc_line in textwrap.wrap(show['desc'], width=60):
@@ -293,7 +301,9 @@ def parseArguments():
   parser.add_argument("-p","--portable", help="Saves the tv schedule and the download log in the current directory instead of {0}".format(LOG_DIR), action="store_true")
 
   parser.add_argument("--new", help="Filters the list of results to only show recently added shows (shows that have just had their first episode aired)", action="store_true")
-  
+
+  parser.add_argument("--originaltitle", help="Includes the original title of the show in the filename if it was found (this is usually the foreign title of the series or movie)", action="store_true")
+
   return parser.parse_args()
  
 # Appends the config directory to config file names
@@ -355,16 +365,25 @@ def sanitizeFileName(local_filename, sep=" "):
   local_filename = re.sub(r"[\"/:<>|?*\n\r\t\x00]", sep, local_filename)
   return local_filename
 
-def createLocalFileName(show):
+def createShowTitle(show, include_original_title=False):
+  show_title = show['title']
+  if( include_original_title and 'original-title' in show ):
+    show_title = "{0} - {1}".format(show['title'], show['original-title'])
+    
+  return show_title
+
+def createLocalFileName(show, include_original_title=False):
+  # Create the show title
+  show_title = createShowTitle(show, include_original_title)
+
   # Create the local filename, if not multiple episodes then
   # append the date and pid to the filename to avoid conflicts
   if( 'ep_num' in show ):
-    local_filename = "{0}.mp4".format(show['title'])
+    local_filename = "{0}.mp4".format(show_title)
   else:
-    local_filename = "{0} - {1} ({2}).mp4".format(show['title'], 
-                                                 show['showtime'][:10],
-                                                 show['pid'])
-                                                 
+    local_filename = "{0} - {1} ({2}).mp4".format(show_title, show['showtime'][:10], show['pid'])
+  
+  # Clean up any possible characters that would interfere with the local OS filename rules
   return sanitizeFileName(local_filename)
 
 def isLocalFileNameUnique(local_filename):
@@ -431,13 +450,13 @@ def runMain():
         show_date = datetime.datetime.strptime(schedule_item['showtime'], '%Y-%m-%d %H:%M:%S')
         if( show_date.date() < filter_older_than_date ):      
           if( args.debug ):
-            print("Excluded show '"+schedule_item['title']+"' "+schedule_item['pid']+ " due to date limit ("+schedule_item['showtime']+")")
+            print("Excluded show '"+createShowTitle(schedule_item, args.originaltitle)+"' "+schedule_item['pid']+ " due to date limit ("+schedule_item['showtime']+")")
           continue
           
       # Check if category exclusion
       if( args.category and (not 'catid' in schedule_item or not int(schedule_item['catid']) == args.category )):
         if( args.debug ):
-            print("Excluded show '"+schedule_item['title']+"' "+schedule_item['pid']+ " is not in category '"+str(args.category)+"'")
+            print("Excluded show '"+createShowTitle(schedule_item, args.originaltitle)+"' "+schedule_item['pid']+ " is not in category '"+str(args.category)+"'")
         continue
       
       candidate_to_add = None
@@ -449,7 +468,7 @@ def runMain():
         if( 'pid' in schedule_item and schedule_item['pid'] in args.pid):
           candidate_to_add = schedule_item
       elif( args.find is not None ):
-        if( 'title' in schedule_item and fuzz.partial_ratio( args.find, schedule_item['title'] ) > 80 ):
+        if( 'title' in schedule_item and fuzz.partial_ratio( args.find, createShowTitle(schedule_item, args.originaltitle) ) > 80 ):
           candidate_to_add = schedule_item
       else:
         # By default if there is no filtering then we simply list everything in the schedule
@@ -486,10 +505,10 @@ def runMain():
     curr_item = 1
     for item in download_list:
       # Get a valid name for the save file
-      local_filename = createLocalFileName(item)
+      local_filename = createLocalFileName(item, args.originaltitle )
       
       # Create the display title for the current episode (used in console output)
-      display_title = "{0} of {1}: {2}".format(curr_item, total_items, item['title']) 
+      display_title = "{0} of {1}: {2}".format(curr_item, total_items, createShowTitle(item, args.originaltitle)) 
       curr_item += 1 # Count the file
 
       # If the output directory is set then check if it exists and create it if it is not
