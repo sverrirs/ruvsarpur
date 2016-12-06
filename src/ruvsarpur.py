@@ -224,9 +224,6 @@ def getShowTimes(days_back = 0):
       if( not entry_org_title is None ):
         entry['original-title'] = entry_org_title.text
 
-      if( entry['title'] == "Fallið" ):
-          print( entry )
-        
       # If the series id is nothing then it is not a show (e.g. dagskrárlok)
       if( not entry['sid'] ):
         continue
