@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # coding=utf-8
-__version__ = "1.6.0"
+__version__ = "1.7.0"
 """
 Python script that allows you to download TV shows off the Icelandic RÚV Sarpurinn website.
 The script is written in Python 3.5
