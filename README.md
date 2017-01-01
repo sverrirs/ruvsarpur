@@ -1,8 +1,11 @@
 <p align="center">
   <img src="https://raw.githubusercontent.com/sverrirs/ruvsarpur/master/img/entertainment.png" alt="logo" title="logo">
 </p>
-# RÚV Sarpur Download
-A python script that allows you to list, search and download TV shows off the Icelandic RÚV Sarpurinn website. 
+
+# RÚV Sarpur
+[`ruvsarpur.py`](#ruvsarpurpy) is a python script that allows you to list, search and download TV shows off the Icelandic RÚV Sarpurinn website. 
+
+[`webvtttosrt.py`](#webvtttosrtpy) is a python script that can convert webvtt and vtt files to the .srt subtitles format. (This format is used by the RÚV website for some episodes).
 
 Project website at https://sverrirs.github.io/ruvsarpur/
 
@@ -16,10 +19,14 @@ For a simpler in-browser alternative check out the cross browser bookmarklet at 
 # Requirements
 Python version 3.x
 
-The script also requires the following packages to be installed 
+Both scripts require the following packages to be installed 
 ```
-pip install colorama    ** new in v1.2
-pip install termcolor   ** new in v1.2
+pip install colorama
+pip install termcolor
+```
+
+Additionally the `ruvsarpur.py` script requires the following packages
+```
 pip install python-dateutil
 pip install requests
 pip install simplejson
@@ -31,7 +38,12 @@ If you run into trouble installing the python-levenstein package (it is optional
 ## Contributing
 Please use a pull/rebase, e.g. `git pull --rebase origin master` when merging changes from master to your branch to avoid unnecessary merge commits.
 
-# Finding and listing shows
+
+
+# ruvsarpur.py
+This is a python script that allows you to list, search and download TV shows off the Icelandic RÚV Sarpurinn website.
+
+## Finding and listing shows
 After downloading the script can be run by typing in
 ```
 python ruvsarpur.py --help
@@ -82,7 +94,7 @@ You can include the optional `--desc` switch to display a short description of e
 python ruvsarpur.py --list --find "Hvolpa" --desc
 ```
 
-# Downloading shows
+## Downloading shows
 
 To download shows you can either use the `sid` (series id) or the `pid` (program id) to select what to download.
 
@@ -122,7 +134,7 @@ When this switch is specified the script will check to see if the video file exi
 python ruvsarpur.py --pid 4849075 --checklocal
 ```
 
-# Advanced uses
+## Advanced uses
 
 Using `--category` argument allows you to filter the tv schedule by category. For example to list only childrens tv shows use the category number 1
 ```
@@ -171,7 +183,7 @@ Found 2 shows
 ```
 
 
-# Scheduling downloads
+## Scheduling downloads
 You can schedule this script to run periodically to download new episodes in a series. To have the script correctly handle downloading re-runs and new seasons then it is recommended to use the `--find` option and specify the series title.
 
 ```
@@ -189,18 +201,61 @@ You can additionally add the `--days` argument to only include shows from the N 
 python ruvsarpur.py --sid 18457 --days 7  -o "c:\videos\ruv"
 ```
 
-## Downloading only a particular season of a series
+### Downloading only a particular season of a series
 In the case you only want to download a particular run of a series then you should use the `--sid` option to monitor a particular tv series and `-o` to set the directory to save the video file into.
 
 ```
 python ruvsarpur.py --sid 18457 -o "c:\videos\ruv\hvolpasveit-season-1"
 ```  
 
-# Frequently Asked Questions
+## Frequently Asked Questions
 
 #### I keep getting a message `SHOW_TITLE not found on server (pid=PID_NUMBER)` when trying to download using your script.
 _Cause_: The file is not available on the RÚV servers.
 
 The script performs an optimistic attempt to locate any show that is listed in the broadcasting programme. However the files are not guaranteed to be still available on the RÚV servers. This is the error that is shown in those cases.
 
+# webvtttosrt.py
+is a general purpose python script that can convert webvtt and vtt files to the .srt subtitles format. This tool is useful when you want to merge subtitle files to existing mp4 video files using the GPAC mp4box utility or similar tools.
 
+## How to use
+This is how you could convert webvtt and vtt subtitle files to SRT and merge them with the source video file using the GPAC Mp4Box utility:
+
+1. First download the subtitles file (usually available in the source of the website that contains the web player. Search for ".webvtt" or ".vtt" to locate)
+
+2. Convert to .srt using this script
+      `python webvtttosrt.py -i subtitles.vtt`
+
+3. Add the srt file to the mp4 video stream (assuming install location for GPAC)
+      `"C:\Program Files\GPAC\mp4box.exe" -add "video.mp4" -add "subtitles.srt":lang=is:name="Icelandic" "merged-video.mp4"`
+
+   if the subtitle font is too small you can make it larger by supplying the ':size=XX' parameter like
+      `"C:\Program Files\GPAC\mp4box.exe" -add "video.mp4" -add "subtitles.srt":size=32:lang=is:name="Icelandic" "merged-video.mp4"`
+
+## Conversion example
+
+Given the following WEBVTT subtitle file
+```
+1-0
+00:01:07.000 --> 00:01:12.040 line:10 align:middle
+Hey buddy, this is the first
+subtitle entry that will be displayed
+
+2-0
+00:01:12.160 --> 00:01:15.360 line:10 align:middle
+Yeah and this is the second line
+<i>living the dream!</i>
+```
+
+the script will produce the following SRT conversion
+```
+1
+00:01:07,000 --> 00:01:12,040
+Hey buddy, this is the first
+subtitle entry that will be displayed
+
+2
+00:01:12,160 --> 00:01:15,360
+Yeah and this is the second line
+<i>living the dream!</i>
+```
