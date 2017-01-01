@@ -224,13 +224,19 @@ This is how you could convert webvtt and vtt subtitle files to SRT and merge the
 1. First download the subtitles file (usually available in the source of the website that contains the web player. Search for ".webvtt" or ".vtt" in the website HTML source)
 
 2. Convert to .srt using the script by issuing
-      ```python webvtttosrt.py -i subtitles.vtt```
+      ```
+      python webvtttosrt.py -i subtitles.vtt
+      ```
 
 3. Add the srt file to the mp4 video stream (assuming install location for [GPAC](https://github.com/gpac/gpac/))
-      ```"C:\Program Files\GPAC\mp4box.exe" -add "video.mp4" -add "subtitles.srt":lang=is:name="Icelandic" "merged-video.mp4"```
+      ```
+      "C:\Program Files\GPAC\mp4box.exe" -add "video.mp4" -add "subtitles.srt":lang=is:name="Icelandic" "merged-video.mp4"
+      ```
 
    if the subtitle font is too small you can make it larger by supplying the ':size=XX' parameter like
-     ```"C:\Program Files\GPAC\mp4box.exe" -add "video.mp4" -add "subtitles.srt":size=32:lang=is:name="Icelandic" "merged-video.mp4"```
+     ```
+     "C:\Program Files\GPAC\mp4box.exe" -add "video.mp4" -add "subtitles.srt":size=32:lang=is:name="Icelandic" "merged-video.mp4"
+     ```
 
 ## Conversion example
 
