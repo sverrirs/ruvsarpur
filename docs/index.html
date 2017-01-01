@@ -294,12 +294,12 @@ chcp 1252
 <ol>
 <li><p>First download the subtitles file (usually available in the source of the website that contains the web player. Search for ".webvtt" or ".vtt" to locate)</p></li>
 <li><p>Convert to .srt using this script
-  </p><p><code>python webvtttosrt.py -i subtitles.vtt</code></p></li>
+  </p><p><div class="code">python webvtttosrt.py -i subtitles.vtt</div></p></li>
 <li><p>Add the srt file to the mp4 video stream (assuming install location for <a href="https://github.com/gpac/gpac/" target="_blank">GPAC</a>)
-  </p><p><code>"C:\Program Files\GPAC\mp4box.exe" -add "video.mp4" -add "subtitles.srt":lang=is:name="Icelandic" "merged-video.mp4"</code></p>
+  </p><p><div class="code">"C:\Program Files\GPAC\mp4box.exe" -add "video.mp4" -add "subtitles.srt":lang=is:name="Icelandic" "merged-video.mp4"</div></p>
 
 <p>if the subtitle font is too small you can make it larger by supplying the ':size=XX' parameter like
-  </p><p><code>"C:\Program Files\GPAC\mp4box.exe" -add "video.mp4" -add "subtitles.srt":size=32:lang=is:name="Icelandic" "merged-video.mp4"</code></p></li>
+  </p><p><div class="code">"C:\Program Files\GPAC\mp4box.exe" -add "video.mp4" -add "subtitles.srt":size=32:lang=is:name="Icelandic" "merged-video.mp4"</div></p></li>
 </ol>
 
 <h2>Conversion example</h2>
