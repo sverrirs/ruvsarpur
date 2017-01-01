@@ -216,21 +216,21 @@ _Cause_: The file is not available on the RÚV servers.
 The script performs an optimistic attempt to locate any show that is listed in the broadcasting programme. However the files are not guaranteed to be still available on the RÚV servers. This is the error that is shown in those cases.
 
 # webvtttosrt.py
-is a general purpose python script that can convert webvtt and vtt files to the .srt subtitles format. This tool is useful when you want to merge subtitle files to existing mp4 video files using the GPAC mp4box utility or similar tools.
+is a general purpose python script that can convert webvtt and vtt files to the .srt subtitles format. This tool is useful when you want to merge subtitle files to existing mp4 video files using the [GPAC mp4box utility](https://github.com/gpac/gpac/) or similar tools.
 
 ## How to use
-This is how you could convert webvtt and vtt subtitle files to SRT and merge them with the source video file using the GPAC Mp4Box utility:
+This is how you could convert webvtt and vtt subtitle files to SRT and merge them with the source video file using the [GPAC Mp4Box](https://github.com/gpac/gpac/) utility:
 
-1. First download the subtitles file (usually available in the source of the website that contains the web player. Search for ".webvtt" or ".vtt" to locate)
+1. First download the subtitles file (usually available in the source of the website that contains the web player. Search for ".webvtt" or ".vtt" in the website HTML source)
 
-2. Convert to .srt using this script
-      `python webvtttosrt.py -i subtitles.vtt`
+2. Convert to .srt using the script by issuing
+      ```python webvtttosrt.py -i subtitles.vtt```
 
-3. Add the srt file to the mp4 video stream (assuming install location for GPAC)
-      `"C:\Program Files\GPAC\mp4box.exe" -add "video.mp4" -add "subtitles.srt":lang=is:name="Icelandic" "merged-video.mp4"`
+3. Add the srt file to the mp4 video stream (assuming install location for [GPAC](https://github.com/gpac/gpac/))
+      ```"C:\Program Files\GPAC\mp4box.exe" -add "video.mp4" -add "subtitles.srt":lang=is:name="Icelandic" "merged-video.mp4"```
 
    if the subtitle font is too small you can make it larger by supplying the ':size=XX' parameter like
-      `"C:\Program Files\GPAC\mp4box.exe" -add "video.mp4" -add "subtitles.srt":size=32:lang=is:name="Icelandic" "merged-video.mp4"`
+     ```"C:\Program Files\GPAC\mp4box.exe" -add "video.mp4" -add "subtitles.srt":size=32:lang=is:name="Icelandic" "merged-video.mp4"```
 
 ## Conversion example
 

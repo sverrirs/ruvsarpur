@@ -68,7 +68,10 @@
 <h1>
 <a id="rÚv-sarpur-download" class="anchor" href="#r%C3%9Av-sarpur-download" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>RÚV Sarpur Download</h1>
 
-<p>A python script that allows you to list, search and download TV shows off the Icelandic RÚV Sarpurinn website. </p>
+<p><a href="#ruvsarpurpy"><code>ruvsarpur.py</code></a> is a python script that allows you to list, search and download TV shows off the Icelandic RÚV Sarpurinn website. </p>
+
+<p><a href="#webvtttosrtpy"><code>webvtttosrt.py</code></a> is a python script that can convert webvtt and vtt files to the .srt subtitles format. (This format is used by the RÚV website for some episodes).</p>
+
 <p>For a simpler in-browser alternative check out the cross browser bookmarklet at <a href="https://labs.sverrirs.com/ruvsarpur/" target="_blank">labs.sverrirs.com/ruvsarpur/</a></p>
 
 
@@ -82,22 +85,31 @@
 
 <p>Python version 3.x</p>
 
-<p>The script also requires the following packages to be installed </p>
+<p>Both scripts require the following packages to be installed </p>
 
 <div class="code">
-pip install colorama    <i>** new in v1.2</i><br>
-pip install termcolor   <i>** new in v1.2</i><br>
+pip install colorama<br>
+pip install termcolor
+</div>
+
+<p>Additionally the <code>ruvsarpur.py</code> script requires the following packages</p>
+
+<div class="code">
 pip install python-dateutil<br>
 pip install requests<br>
 pip install simplejson<br>
 pip install fuzzywuzzy<br>
-pip install python-levenshtein<br>
+pip install python-levenshtein
 </div>
 
 <p>If you run into trouble installing the python-levenstein package (it is optional) then check out this solution on StackOverflow <a href="http://stackoverflow.com/a/33163704">http://stackoverflow.com/a/33163704</a></p>
 
-<h1>
-<a id="finding" class="anchor" href="#finding" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>Finding and listing shows</h1>
+<h1><a id="user-content-ruvsarpurpy" class="anchor" href="#ruvsarpurpy" aria-hidden="true">ruvsarpur.py</a></h1>
+
+<p>This is a python script that allows you to list, search and download TV shows off the Icelandic RÚV Sarpurinn website.</p>
+
+<h2>
+<a id="finding" class="anchor" href="#finding" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>Finding and listing shows</h2>
 
 <p>After downloading the script can be run by typing in </p>
 
@@ -151,7 +163,7 @@ Found 3 shows<br>
 python ruvsarpur.py --list --find "Hvolpa" --desc
 </div>
 
-<h1><a id="downloading" class="anchor" href="#downloading" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>Finding and listing shows</h1>
+<h2><a id="downloading" class="anchor" href="#downloading" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>Finding and listing shows</h2>
 
 <p>To download shows you can either use the <code>sid</code> (series id) or the <code>pid</code> (program id) to select what to download.</p>
 
@@ -239,8 +251,8 @@ When this switch is specified the script will check to see if the video file exi
 <sid>&nbsp;&nbsp;18457</sid>: Sýnt 2016-09-25 08:00
 </div>
 
-<h1>
-<a id="scheduling-downloads" class="anchor" href="#scheduling-downloads" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>Scheduling downloads</h1>
+<h2>
+<a id="scheduling-downloads" class="anchor" href="#scheduling-downloads" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>Scheduling downloads</h2>
 
 <p>You can schedule this script to run periodically to download new episodes in a series. To have the script correctly handle downloading re-runs and new seasons then it is recommended to use the <code>--find</code> option and specify the series title.</p>
 
@@ -258,17 +270,65 @@ chcp 1252
 <div class="code">python ruvsarpur.py --sid 18457 --days 7  -o "c:\videos\ruv"
 </div>
 
-<h2>Downloading only a particular season of a series</h2>
+<h3>Downloading only a particular season of a series</h3>
 <p>n the case you only want to download a particular run of a series then you should use the <code>--sid</code> option to monitor a particular tv series and <code>-o</code> to set the directory to save the video file into.</p>
 
 <div class="code">python ruvsarpur.py --sid 18457 -o "c:\videos\ruv\hvolpasveit-season-1"
 </div>
 
-<h1><a id="faq" class="anchor" href="#faq" aria-hidden="true"></a>Frequently Asked Questions</h1>
+<h2><a id="faq" class="anchor" href="#faq" aria-hidden="true"></a>Frequently Asked Questions</h2>
 
 <h4>I keep getting a message "SHOW_TITLE not found on server (pid=PID_NUMBER)" when trying to download using your script.</h4>
 <p><strong>Cause: The file is not available on the RÚV servers.</strong></p>
 <p>The script performs an optimistic attempt to locate any show that is listed in the broadcasting programme. However the files are not guaranteed to be still available on the RÚV servers. This is the error that is shown in those cases.</p>
+
+
+<h1><a id="user-content-webvtttosrtpy" class="anchor" href="#webvtttosrtpy" aria-hidden="true">webvtttosrt.py</a></h1>
+
+<p>is a general purpose python script that can convert webvtt and vtt files to the .srt subtitles format. This tool is useful when you want to merge subtitle files to existing mp4 video files using the <a href="https://github.com/gpac/gpac/" target="_blank">GPAC mp4box utility</a> or similar tools.</p>
+
+<h2><a id="user-content-how-to-use" class="anchor" href="#how-to-use" aria-hidden="true">How to use</a></h2>
+
+<p>This is how you could convert webvtt and vtt subtitle files to SRT and merge them with the source video file using the <a href="https://github.com/gpac/gpac/" target="_blank">GPAC Mp4Box utility</a>:</p>
+
+<ol>
+<li><p>First download the subtitles file (usually available in the source of the website that contains the web player. Search for ".webvtt" or ".vtt" to locate)</p></li>
+<li><p>Convert to .srt using this script
+  <code>python webvtttosrt.py -i subtitles.vtt</code></p></li>
+<li><p>Add the srt file to the mp4 video stream (assuming install location for <a href="https://github.com/gpac/gpac/" target="_blank">GPAC</a>)
+  <code>"C:\Program Files\GPAC\mp4box.exe" -add "video.mp4" -add "subtitles.srt":lang=is:name="Icelandic" "merged-video.mp4"</code></p>
+
+<p>if the subtitle font is too small you can make it larger by supplying the ':size=XX' parameter like
+  <code>"C:\Program Files\GPAC\mp4box.exe" -add "video.mp4" -add "subtitles.srt":size=32:lang=is:name="Icelandic" "merged-video.mp4"</code></p></li>
+</ol>
+
+<h2><a id="user-content-conversion-example" class="anchor" href="#conversion-example" aria-hidden="true">Conversion example</a></h2>
+
+<p>Given the following WEBVTT subtitle file</p>
+
+<div class="code">1-0<br>
+00:01:07.000 --&gt; 00:01:12.040 line:10 align:middle<br>
+Hey buddy, this is the first<br>
+subtitle entry that will be displayed<br>
+&nbsp;<br>
+2-0<br>
+00:01:12.160 --&gt; 00:01:15.360 line:10 align:middle<br>
+Yeah and this is the second line<br>
+&lt;i&gt;living the dream!&lt;/i&gt;<br>
+</div>
+
+<p>the script will produce the following SRT conversion</p>
+
+<div class="code">1<br>
+00:01:07,000 --&gt; 00:01:12,040<br>
+Hey buddy, this is the first<br>
+subtitle entry that will be displayed<br>
+&nbsp;<br>
+2<br>
+00:01:12,160 --&gt; 00:01:15,360<br>
+Yeah and this is the second line<br>
+&lt;i&gt;living the dream!&lt;/i&gt;<br>
+</div>
 
         </section>
 
