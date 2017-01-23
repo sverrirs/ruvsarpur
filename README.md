@@ -215,6 +215,27 @@ _Cause_: The file is not available on the RÚV servers.
 
 The script performs an optimistic attempt to locate any show that is listed in the broadcasting programme. However the files are not guaranteed to be still available on the RÚV servers. This is the error that is shown in those cases.
 
+## Using OpenVPN to automatically connect to a VPN if necessary
+In case you want your script to be run over a [VPN connection](http://www.expressrefer.com/refer-a-friend/30-days-free/?referrer_id=11147993) then it is recommended that you use the `OpenVPN` software. It is widely supported by VPN providers and can be easily used via command line.
+
+Below is an example of how to integrate a VPN connection sequence before running the ruvsarpur.py downloader on Windows
+
+```
+echo "Starting VPN connection"
+start openvpn.exe --config "vpnconfig.ovpn" --auth-user-pass "userpassword.txt"
+
+echo "Waiting 15 seconds before starting download"
+ping 127.0.0.1 -n 15 > nul
+
+python ruvsarpur.py --find "Hvolpasveitin" --days 30 -o "c:\videos\ruv\hvolpasveit"
+
+echo "Terminating VPN connection"
+taskkill /FI "IMAGENAME eq openvpn.exe"
+taskkill /f /im openvpn.exe
+```
+
+_Note that this code **must** be run under Administrator/sudo privileges due to modifications and changes to the system that `openvpn.exe` makes to redirect internet traffic through its VPN connection._
+
 # webvtttosrt.py
 is a general purpose python script that can convert webvtt and vtt files to the .srt subtitles format. This tool is useful when you want to merge subtitle files to existing mp4 video files using the [GPAC mp4box utility](https://github.com/gpac/gpac/) or similar tools.
 
