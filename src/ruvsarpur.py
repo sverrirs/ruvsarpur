@@ -64,6 +64,7 @@ TV_SCHEDULE_LOG_FILE = 'tvschedule.json'
 # The urls that should be tried when attempting to discover the actual video file on the server
 EP_URLS = [
             'http://smooth.ruv.cache.is/lokad/{0}R{1}.mp4',
+            'http://smooth.ruv.cache.is/lokad/{0}M{1}.mp4',
             'http://smooth.ruv.cache.is/opid/{0}R{1}.mp4'
           ]
              
