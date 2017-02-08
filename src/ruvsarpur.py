@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # coding=utf-8
-__version__ = "1.7.0"
+__version__ = "1.7.1"
 """
 Python script that allows you to download TV shows off the Icelandic RÚV Sarpurinn website.
 The script is written in Python 3.5
@@ -365,7 +365,7 @@ def sanitizeFileName(local_filename, sep=" "):
 
 def createShowTitle(show, include_original_title=False):
   show_title = show['title']
-  if( include_original_title and 'original-title' in show ):
+  if( include_original_title and 'original-title' in show and not show['original-title'] is None ):
     show_title = "{0} - {1}".format(show['title'], show['original-title'])
     
   return show_title
