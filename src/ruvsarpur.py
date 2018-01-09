@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # coding=utf-8
-__version__ = "1.7.1"
+__version__ = "1.8.0"
 """
 Python script that allows you to download TV shows off the Icelandic RÚV Sarpurinn website.
 The script is written in Python 3.5
@@ -189,7 +189,10 @@ def getShowTimes(days_back = 0):
     from_date = today - dateutil.relativedelta.relativedelta(days=days_back)
   
   # Construct the URL for the last month and download the TV schedule
-  url = "http://muninn.ruv.is/files/xml/ruv/{0}/{1}/$download".format(from_date.strftime('%Y-%m-%d'), today.strftime('%Y-%m-%d'))
+  #http://muninn.ruv.is/files/xml/ruv/2017-06-15/2017-07-09/
+  #url = "http://muninn.ruv.is/files/xml/ruv/{0}/{1}/$download".format(from_date.strftime('%Y-%m-%d'), today.strftime('%Y-%m-%d'))
+  url = "http://muninn.ruv.is/files/xml/ruv/{0}/{1}/".format(from_date.strftime('%Y-%m-%d'), today.strftime('%Y-%m-%d'))
+  
     
   schedule = {}
   schedule['date'] = today
@@ -345,16 +348,20 @@ def saveCurrentTvSchedule(schedule,tv_file_name):
     out_file.write(json.dumps(schedule, ensure_ascii=False, sort_keys=True, indent=2*' '))
   
 def getExistingTvSchedule(tv_file_name):
-  tv_file = Path(tv_file_name)
-  if tv_file.is_file():
-    with tv_file.open('r+',encoding='utf-8') as in_file:
-      existing = json.load(in_file)
-    
-    # format the date field
-    existing['date'] = datetime.datetime.strptime(existing['date'], '%Y-%m-%d')
-    
-    return existing
-  else:
+  try:
+    tv_file = Path(tv_file_name)
+    if tv_file.is_file():
+      with tv_file.open('r+',encoding='utf-8') as in_file:
+        existing = json.load(in_file)
+      
+      # format the date field
+      existing['date'] = datetime.datetime.strptime(existing['date'], '%Y-%m-%d')
+      
+      return existing
+    else:
+      return None
+  except:
+    print("Could not open existing tv schedule, downloading new one (invalid file at "+tv_file_name+")")
     return None
     
 def sanitizeFileName(local_filename, sep=" "):
