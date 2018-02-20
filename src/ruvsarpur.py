@@ -443,7 +443,7 @@ def parseArguments():
 
   parser.add_argument("--originaltitle", help="Includes the original title of the show in the filename if it was found (this is usually the foreign title of the series or movie)", action="store_true")
 
-  parser.add_argument("--ffmpeg",       help="Path to the ffmpeg install directory (not including the exe)", 
+  parser.add_argument("--ffmpeg",       help="Full path to the ffmpeg executable file", 
                                         type=str)
 
   return parser.parse_args()
