@@ -144,6 +144,7 @@ python ruvsarpur.py --pid 4849075 --quality "HD1080"
 ```
 
 The available values are:
+
 | Value | Description | kbps |
 | ----- | ----- | ----- |
 | `"Very Low"` | Very small, for very old mobile devices with small screens (resolution under 320x240) | 500kbps |
