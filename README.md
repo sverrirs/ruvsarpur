@@ -9,7 +9,8 @@
 
 Project website at https://sverrirs.github.io/ruvsarpur/
 
-For a simpler in-browser alternative check out the cross browser bookmarklet at https://labs.sverrirs.com/ruvsarpur/
+> Note: As of version 2.0 this tool includes the ffmpeg video processing kit. If you are on any other platform than Windows 64bit you will need to [download the binary executable of ffmpeg](https://www.ffmpeg.org/download.html) for your operating system from the official website and then specify its path using the `--ffmpeg` command line parameter.
+
 
 # Demo
 <p align="center">
@@ -37,7 +38,6 @@ If you run into trouble installing the python-levenstein package (it is optional
 
 ## Contributing
 Please use a pull/rebase, e.g. `git pull --rebase origin master` when merging changes from master to your branch to avoid unnecessary merge commits.
-
 
 
 # ruvsarpur.py
@@ -133,6 +133,25 @@ When this switch is specified the script will check to see if the video file exi
 ```
 python ruvsarpur.py --pid 4849075 --checklocal
 ```
+
+## Choosing video quality
+
+The script chooses automatically the 'Normal' video quality for all download streams, this is equivilent of SD (standard-definition) or 1200kbps.
+
+By using `--quality` you instruct the script to download either a higher or lower quality video.
+```
+python ruvsarpur.py --pid 4849075 --quality "HD1080"
+```
+
+The available values are:
+| Value | Description | kbps |
+| ----- | ----- | ----- |
+| `"Very Low"` | Very small, for very old mobile devices with small screens (resolution under 320x240) | 500kbps |
+| `"Low"` | Small, for older devices, e.g. iPhone 4G (resolution under 640x360) | 800kbps |
+| `"Normal"` | Normal quality expected in a standard definition broadcast, works well on most devices. This is the default. | 1200kbps |
+| `"HD720"` | 720p good quality, intended for HD-ready devices | 2400kbps |
+| `"HD1080"` | 1080p very good quality intended for newer devices marked as Full-HD resolution. This produces very big files. | 3600kbps |
+
 
 ## Advanced uses
 

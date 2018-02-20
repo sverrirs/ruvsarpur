@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # coding=utf-8
-__version__ = "1.8.0"
+__version__ = "2.0.0"
 """
 Python script that allows you to download TV shows off the Icelandic RÚV Sarpurinn website.
 The script is written in Python 3.5
@@ -41,6 +41,19 @@ import ntpath # Used to extract file name from path for all platforms http://sta
 import glob # Used to do partial file path matching (when searching for already downloaded files) http://stackoverflow.com/a/2225582/779521
 import uuid # Used to generate a ternary backup local filename if everything else fails.
 
+import urllib.request, urllib.parse # Downloading of data from URLs (used with the JSON parser)
+import requests # Downloading of data from HTTP
+from requests.adapters import HTTPAdapter # For Retrying
+from requests.packages.urllib3.util.retry import Retry # For Retrying
+import ssl
+import http.client as http_client
+
+import subprocess # To execute shell commands 
+
+# Disable SSL warnings
+from requests.packages.urllib3.exceptions import InsecureRequestWarning
+requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
+
 # Lambdas as shorthands for printing various types of data
 # See https://pypi.python.org/pypi/termcolor for more info
 color_title = lambda x: colored(x, 'cyan', 'on_grey')
@@ -61,12 +74,21 @@ PREV_LOG_FILE = 'prevrecorded.log'
 # Name of the log file containing the downloaded tv schedule
 TV_SCHEDULE_LOG_FILE = 'tvschedule.json'
 
-# The urls that should be tried when attempting to discover the actual video file on the server
-EP_URLS = [
-            'http://smooth.ruv.cache.is/lokad/{0}R{1}.mp4',
-            'http://smooth.ruv.cache.is/lokad/{0}M{1}.mp4',
-            'http://smooth.ruv.cache.is/opid/{0}R{1}.mp4'
-          ]
+# The available bitrate streams
+QUALITY_BITRATE = {
+    "Very Low": { 'code': "500kbps", 'chunk_size' : 750000},
+    "Low"     : { 'code': "800kbps", 'chunk_size' :1000000},
+    "Normal"  : { 'code': "1200kbps", 'chunk_size':1500000},
+    "HD720"   : { 'code': "2400kbps", 'chunk_size':2800000},
+    "HD1080"  : { 'code': "3600kbps", 'chunk_size':4000000}
+}
+
+# The url patterns that will be executed to try to discover the material
+# Example: http://sip-ruv-vod.dcp.adaptive.level3.net/lokad/2018/02/19/500kbps/4942522T0.mp4.m3u8
+PLAYLIST_URLS = [
+  'http://sip-ruv-vod.dcp.adaptive.level3.net/lokad/{0}/{1}/{2}/{3}/{4}{5}{6}.mp4.m3u8',
+  'http://sip-ruv-vod.dcp.adaptive.level3.net/opid/{0}/{1}/{2}/{3}/{4}{5}{6}.mp4.m3u8',
+]
              
 # Print console progress bar
 # http://stackoverflow.com/a/34325723
@@ -91,9 +113,7 @@ def printProgress (iteration, total, prefix = '', suffix = '', decimals = 1, bar
     else:
       bar             = '=' * filledLength + '-' * (barLength - filledLength)
       sys.stdout.write('\r %s |%s| %s %s' % (prefix, bar, percents+'%', suffix)),
-      
-    if iteration == total:
-        sys.stdout.write('\n')
+          
     sys.stdout.flush()
   except: 
     pass # Ignore all errors when printing progress
@@ -140,20 +160,131 @@ def download_file(url, local_filename, display_title, keeppartial = False ):
         raise
     raise
 
-# Attempts to locate the video file for a certain program id on the server
-# when the file is located it is downloaded and then the logic stops, if nothing is 
-# found then this function returns None
-def find_and_download_file(pid, local_filename, display_title, keeppartial = False):
+# Creates a new retry session for the HTTP protocol
+# See: https://www.peterbe.com/plog/best-practice-with-retries-with-requests
+def __create_retry_session(retries=5):
+  session = requests.Session()
+  retry = Retry(
+    total=retries,
+    read=retries,
+    connect=retries,
+    backoff_factor=0.3,
+    status_forcelist=(500, 502, 504))
+  adapter = HTTPAdapter(max_retries=retry)
+  session.mount('http://', adapter)
+  session.mount('https://', adapter)
+  return session
 
-  for url in EP_URLS:
-    for r in range(30):
-      url_formatted = url.format(pid, r)
-      if( not download_file(url_formatted, local_filename, display_title, keeppartial) is None ):
-        return local_filename
+# Attempts to discover the correct playlist file
+def find_m3u8_playlist_url(item, display_title, video_quality):
+  pid = item['pid']
+  shown_year = item['showtime'][:4]
+  shown_month = item['showtime'][5:7]
+  shown_day = item['showtime'][8:10]
+  for url in PLAYLIST_URLS:
+    for num in range(30):
+      for letter in ['T','S','R','M','K']: #,'A','B','C','D','E','F','G','H','I','J','L','N','O','P','Q','U','V','W','X','Y','Z']:
+        url_formatted = url.format(shown_year, shown_month, shown_day, QUALITY_BITRATE[video_quality]['code'], pid, letter, num)
+        url_path = '/'.join(url_formatted.split('/')[:-1])
+        try:
+          # Add default headers
+          headers = {'User-Agent':'Mozilla/5.0 (Windows NT 6.1; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/63.0.3239.132 Safari/537.36'}
+          
+          # Perform the get
+          request = __create_retry_session().get(url_formatted, stream=False, timeout=5, verify=False, headers=headers)
+
+          # If there wasn't a success then continue with the next url attempt
+          if request is None or not request.status_code == 200 or len(request.text) <= 0:
+            continue
+          
+          fragments = ['{0}/{1}'.format(url_path, line.strip()) for line in request.text.splitlines() if line[0] != '#']
+
+          # We found a playlist file, let's return the url and the fragments
+          return {'url': url_formatted, 'fragments':fragments}
+
+        except Exception as ex:
+          print( "Error while discovering playlist for {1} from '{0}'".format(url_formatted, color_title(display_title)))
+          print( ex )
+          return None
     
   print( "{0} not found on server (pid={1})".format(color_title(display_title), pid))
   return None
+
+# FFMPEG download of the playlist
+def download_m3u8_playlist_using_ffmpeg(ffmpegexec, playlist_url, playlist_fragments, local_filename, display_title, keeppartial, video_quality):
+  prog_args = [ffmpegexec]
+
+  # Don't show copyright header
+  prog_args.append("-hide_banner")
+
+  # Don't show excess logging (only things that cause the exe to terminate)
+  prog_args.append("-loglevel")
+  prog_args.append("verbose") 
   
+  # Force showing progress indicator text
+  prog_args.append("-stats") 
+
+  # Overwrite any prompts with YES
+  prog_args.append("-y")
+
+  # Add the input url
+  prog_args.append('-i')
+  prog_args.append(playlist_url)
+
+  # conversion configuration
+  prog_args.append('-c')
+  prog_args.append('copy')
+  prog_args.append('-bsf:a')
+  prog_args.append('aac_adtstoasc')
+
+  # Finally the output file path
+  prog_args.append(local_filename)
+
+  # Force a UTF8 environment for the subprocess so that files with non-ascii characters are read correctly
+  # for this to work we must not use the universal line endings parameter
+  my_env = os.environ
+  my_env['PYTHONIOENCODING'] = 'utf-8'
+
+  # Some counting for progress bars
+  total_chunks = len(playlist_fragments)
+  completed_chunks = 0
+  total_size = QUALITY_BITRATE[video_quality]['chunk_size'] * total_chunks
+  total_size_mb = str(int(total_size/1024.0/1024.0))
+
+  print("{0} | Estimated: {1} MB".format(color_title(display_title), total_size_mb))
+  printProgress(completed_chunks, total_chunks, prefix = 'Downloading:', suffix = 'Starting', barLength = 25)
+
+  # Run the app and collect the output
+  ret = subprocess.Popen(prog_args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True, env=my_env)
+  try:
+    while True:
+      try:
+        line = ret.stdout.readline()
+        if not line:
+          break
+        line = line.strip()
+        if ' Opening \'http://sip-ruv-vod.dcp.adaptive.level3.net' in line:
+          completed_chunks += 1
+          printProgress(min(completed_chunks, total_chunks), total_chunks, prefix = 'Downloading:', suffix = 'Working ', barLength = 25)
+      except UnicodeDecodeError:
+        continue # Ignore all unicode errors, don't care!
+
+    # Ensure that the return code was ok before continuing
+    retcode = ret.poll()
+    while retcode is None:
+      retcode = ret.poll()
+  except KeyboardInterrupt:
+    ret.terminate()
+    raise
+
+  printProgress(total_chunks, total_chunks, prefix = 'Downloading:', suffix = 'Complete', barLength = 25, color = False)
+  # Write one extra line break after operation finishes otherwise the subsequent prints will end up in the same line
+  sys.stdout.write('\n')
+
+  # If the process returned ok then return the local name otherwise a None to signify an error
+  if ret == 0:
+    return local_filename
+  return None
   
 def download_xml(url):
     r = requests.get(url)
@@ -192,7 +323,6 @@ def getShowTimes(days_back = 0):
   #http://muninn.ruv.is/files/xml/ruv/2017-06-15/2017-07-09/
   #url = "http://muninn.ruv.is/files/xml/ruv/{0}/{1}/$download".format(from_date.strftime('%Y-%m-%d'), today.strftime('%Y-%m-%d'))
   url = "http://muninn.ruv.is/files/xml/ruv/{0}/{1}/".format(from_date.strftime('%Y-%m-%d'), today.strftime('%Y-%m-%d'))
-  
     
   schedule = {}
   schedule['date'] = today
@@ -274,6 +404,11 @@ def parseArguments():
   parser.add_argument("--pid", help="The program ids for the program entries that should be downloaded",
                                type=str, nargs="+")
 
+  parser.add_argument("-q", "--quality", help="The desired quality of the downloaded episode, default is 'Normal' which is Standard-Definition",
+                                         choices=list(QUALITY_BITRATE.keys()),
+                                         default="Normal",
+                                         type=str)
+
   parser.add_argument("-c", "--category", 
                             choices=[1,2,3,4,5,6,7,9,13,17],
                             help="Limit the results to only shows in particular categories. Categories are: 1='Börn',2='Framhaldsþættir',3='Fréttatengt',4='Fræðsla',5='Íþróttir',6='Íslenskir þættir',7='Kvikmyndir',9='Tónlist',13='Samfélag',17='Menning'",
@@ -305,6 +440,9 @@ def parseArguments():
 
   parser.add_argument("--originaltitle", help="Includes the original title of the show in the filename if it was found (this is usually the foreign title of the series or movie)", action="store_true")
 
+  parser.add_argument("--ffmpeg",       help="Path to the ffmpeg install directory (not including the exe)", 
+                                        type=str)
+
   return parser.parse_args()
  
 # Appends the config directory to config file names
@@ -313,7 +451,6 @@ def createFullConfigFileName(portable, file_name):
     return "./{0}".format(file_name)
   else:
     return "{0}/{1}".format(LOG_DIR,file_name)
-
 
 # Saves a list of program ids to a file
 def appendNewPidAndSavePreviouslyRecordedShows(new_pid, previously_recorded_pids, rec_file_name):
@@ -399,6 +536,22 @@ def isLocalFileNameUnique(local_filename):
   fileSearchString = local_filename.split(".mp4")[0]+"*.mp4"
   retval = glob.glob(fileSearchString)
   return not retval
+
+#
+# Locates the ffmpeg executable and returns a full path to it
+#  NOTE: Currently this only works  under Windows, need to change the discovery mechanism for linux/osx
+def findffmpeg(path_to_ffmpeg_install=None, working_dir=None):
+  if not path_to_ffmpeg_install is None and os.path.isfile(path_to_ffmpeg_install):
+    return path_to_ffmpeg_install
+
+  # Attempts to search for it under the bin folder
+  bin_dist = os.path.join(working_dir, "..\\bin\\ffmpeg.exe")
+  if os.path.isfile(bin_dist):
+    return str(Path(bin_dist).resolve())
+  
+  # Throw an error
+  raise ValueError('Could not locate FFMPEG install, please use the --ffmpeg switch to specify the path to the ffmpeg.exe file on your system.')
+
     
 # The main entry point for the script
 def runMain():
@@ -406,9 +559,15 @@ def runMain():
     init() # Initialize the colorama library
     
     today = datetime.date.today()
+
+    # Get the current working directory (place that the script is executing from)
+    working_dir = sys.path[0]
     
     # Construct the argument parser for the commandline
     args = parseArguments()
+
+    # Get ffmpeg exec
+    ffmpegexec = findffmpeg(args.ffmpeg, working_dir)
 
     # Create the full filenames for the config files
     previously_recorded_file_name = createFullConfigFileName(args.portable,PREV_LOG_FILE)
@@ -551,11 +710,21 @@ def runMain():
         continue
 
       #############################################
-      # Download the file to the local computer and if everything was OK then save the pid as successfully downloaded
-      result = find_and_download_file(item['pid'], local_filename, display_title, args.keeppartial)
+      # We will rely on ffmpeg to do the playlist download and merging for us
+      # the tool is much better suited to this than manually merging as there
+      # are always some corruption issues in the merged stream if done in code
+      
+      # Get the correct playlist url
+      playlist_data = find_m3u8_playlist_url(item, display_title, args.quality)
+      if playlist_data is None:
+        print("Error: Could not download show playlist, not found on server. Try requesting a different video quality.")
+        continue
+
+      # Now ask FFMPEG to download and remux all the fragments for us
+      result = download_m3u8_playlist_using_ffmpeg(ffmpegexec, playlist_data['url'], playlist_data['fragments'], local_filename, display_title, args.keeppartial, args.quality)
       if( not result is None ):
-        # Save the list of already recorded shows back to file
-        appendNewPidAndSavePreviouslyRecordedShows(item['pid'], previously_recorded, previously_recorded_file_name)
+        # if everything was OK then save the pid as successfully downloaded
+        appendNewPidAndSavePreviouslyRecordedShows(item['pid'], previously_recorded, previously_recorded_file_name) 
     
   finally:
     deinit() #Deinitialize the colorama library
