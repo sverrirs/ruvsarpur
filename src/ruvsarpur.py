@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # coding=utf-8
-__version__ = "2.0.0"
+__version__ = "2.1.0"
 # When modifying remember to issue a new tag command in git before committing, then push the new tag
 #   git tag -a v2.0.0 -m "v2.0.0"
 #   git push origin --tags
@@ -273,6 +273,7 @@ def download_m3u8_playlist_using_ffmpeg(ffmpegexec, playlist_url, playlist_fragm
         continue # Ignore all unicode errors, don't care!
 
     # Ensure that the return code was ok before continuing
+    # Check if child process has terminated. Set and return returncode attribute. Otherwise, returns None.
     retcode = ret.poll()
     while retcode is None:
       retcode = ret.poll()
@@ -285,7 +286,7 @@ def download_m3u8_playlist_using_ffmpeg(ffmpegexec, playlist_url, playlist_fragm
   sys.stdout.write('\n')
 
   # If the process returned ok then return the local name otherwise a None to signify an error
-  if ret == 0:
+  if ret.returncode == 0:
     return local_filename
   return None
   
