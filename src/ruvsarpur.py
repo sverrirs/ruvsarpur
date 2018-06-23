@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 # coding=utf-8
-__version__ = "2.1.0"
+__version__ = "2.2.0"
 # When modifying remember to issue a new tag command in git before committing, then push the new tag
-#   git tag -a v2.0.0 -m "v2.0.0"
+#   git tag -a v2.2.0 -m "v2.2.0"
 #   git push origin --tags
 """
 Python script that allows you to download TV shows off the Icelandic RÚV Sarpurinn website.
@@ -188,6 +188,7 @@ def find_m3u8_playlist_url(item, display_title, video_quality):
     for num in range(30):
       for letter in ['T','S','R','M','K']: #,'A','B','C','D','E','F','G','H','I','J','L','N','O','P','Q','U','V','W','X','Y','Z']:
         url_formatted = url.format(shown_year, shown_month, shown_day, QUALITY_BITRATE[video_quality]['code'], pid, letter, num)
+        #print(url_formatted)
         url_path = '/'.join(url_formatted.split('/')[:-1])
         try:
           # Add default headers

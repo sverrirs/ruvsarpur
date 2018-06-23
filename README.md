@@ -20,21 +20,13 @@ Project website at https://sverrirs.github.io/ruvsarpur/
 # Requirements
 Python version 3.x
 
-Both scripts require the following packages to be installed 
+Before first use make sure you install all requirements using 
+
 ```
-pip install colorama
-pip install termcolor
+pip install -r requirements.txt
 ```
 
-Additionally the `ruvsarpur.py` script requires the following packages
-```
-pip install python-dateutil
-pip install requests
-pip install simplejson
-pip install fuzzywuzzy
-pip install python-levenshtein
-```
-If you run into trouble installing the python-levenstein package (it is optional) then check out this solution on StackOverflow http://stackoverflow.com/a/33163704
+>> If you run into trouble installing the python-levenstein package (it is optional) then check out this solution on StackOverflow http://stackoverflow.com/a/33163704
 
 ## Contributing
 Please use a pull/rebase, e.g. `git pull --rebase origin master` when merging changes from master to your branch to avoid unnecessary merge commits.
