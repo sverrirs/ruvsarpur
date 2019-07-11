@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # coding=utf-8
-__version__ = "2.2.0"
+__version__ = "2.2.1"
 # When modifying remember to issue a new tag command in git before committing, then push the new tag
 #   git tag -a v2.2.0 -m "v2.2.0"
 #   git push origin --tags
@@ -70,7 +70,7 @@ color_progress_remaining = lambda x: colored(x, 'white')
 color_progress_percent = lambda x: colored(x, 'green')
 
 # The name of the directory used to store log files.  The directory will be located in the users home directory
-LOG_DIR="{0}/{1}".format(os.path.expanduser('~'),'.ruvsarpur')
+LOG_DIR="{0}/{1}".format(os.path.expanduser('~'), '.ruvsarpur')
 
 # Name of the log file containing the previously recorded shows
 PREV_LOG_FILE = 'prevrecorded.log'
@@ -79,20 +79,28 @@ TV_SCHEDULE_LOG_FILE = 'tvschedule.json'
 
 # The available bitrate streams
 QUALITY_BITRATE = {
-    "Very Low": { 'code': "500kbps", 'chunk_size' : 750000},
-    "Low"     : { 'code': "800kbps", 'chunk_size' :1000000},
-    "Normal"  : { 'code': "1200kbps", 'chunk_size':1500000},
-    "HD720"   : { 'code': "2400kbps", 'chunk_size':2800000},
-    "HD1080"  : { 'code': "3600kbps", 'chunk_size':4000000}
+    "Very Low": { 'kbps': "500",  'chunk_size': 750000},
+    "Low"     : { 'kbps': "800",  'chunk_size':1000000},
+    "Normal"  : { 'kbps': "1200", 'chunk_size':1500000},
+    "HD720"   : { 'kbps': "2400", 'chunk_size':2800000},
+    "HD1080"  : { 'kbps': "3600", 'chunk_size':4000000}
 }
 
 # The url patterns that will be executed to try to discover the material
-# Example: http://sip-ruv-vod.dcp.adaptive.level3.net/lokad/2018/02/19/500kbps/4942522T0.mp4.m3u8
+# Example: https://ruv-vod-app-dcp-v4.secure.footprint.net/lokad/asset-audio=50000-video=450000.m3u8?tlm=hls&streams=
+#           2019/06/16/500kbps/5024981T0.mp4.m3u8:500,
+#           2019/06/16/800kbps/5024981T0.mp4.m3u8:800,
+#           2019/06/16/1200kbps/5024981T0.mp4.m3u8:1200,
+#           2019/06/16/2400kbps/5024981T0.mp4.m3u8:2400,
+#           2019/06/16/3600kbps/5024981T0.mp4.m3u8:3600
+#           &AliasPass=ruv-vod-app-dcp-v4.secure.footprint.net
+_RUV_URL = 'ruv-vod-app-dcp-v4.secure.footprint.net'
 PLAYLIST_URLS = [
-  'http://sip-ruv-vod.dcp.adaptive.level3.net/lokad/{0}/{1}/{2}/{3}/{4}{5}{6}.mp4.m3u8',
-  'http://sip-ruv-vod.dcp.adaptive.level3.net/opid/{0}/{1}/{2}/{3}/{4}{5}{6}.mp4.m3u8',
+  'https://' + _RUV_URL + '/' + LOKAD_OPID + '/asset-audio=50000-video={VIDEO_BPS}.m3u8?tlm=hls&streams='
+  + ','.join('{YYYY}/{MM}/{DD}/' + quality['kbps']  + 'kbps/{PID}{L}{N}.mp4.m3u8:' + quality['kbps'] for quality in QUALITY_BITRATE.values())
+  + '&AliasPass=' + _RUV_URL for LOKAD_OPID in ('lokad', 'opid')
 ]
-             
+
 # Print console progress bar
 # http://stackoverflow.com/a/34325723
 def printProgress (iteration, total, prefix = '', suffix = '', decimals = 1, barLength = 100, color = True):
@@ -187,8 +195,7 @@ def find_m3u8_playlist_url(item, display_title, video_quality):
   for url in PLAYLIST_URLS:
     for num in range(30):
       for letter in ['T','S','R','M','K']: #,'A','B','C','D','E','F','G','H','I','J','L','N','O','P','Q','U','V','W','X','Y','Z']:
-        url_formatted = url.format(shown_year, shown_month, shown_day, QUALITY_BITRATE[video_quality]['code'], pid, letter, num)
-        #print(url_formatted)
+        url_formatted = url.format(VIDEO_BPS=(int(QUALITY_BITRATE[video_quality]['kbps'])-50)*1000, YYYY=shown_year, MM=shown_month, DD=shown_day, PID=pid, L=letter, N=num)
         url_path = '/'.join(url_formatted.split('/')[:-1])
         try:
           # Add default headers
@@ -204,7 +211,7 @@ def find_m3u8_playlist_url(item, display_title, video_quality):
           fragments = ['{0}/{1}'.format(url_path, line.strip()) for line in request.text.splitlines() if line[0] != '#']
 
           # We found a playlist file, let's return the url and the fragments
-          return {'url': url_formatted, 'fragments':fragments}
+          return {'url': url_formatted, 'fragments': fragments}
 
         except Exception as ex:
           print( "Error while discovering playlist for {1} from '{0}'".format(url_formatted, color_title(display_title)))
@@ -267,7 +274,7 @@ def download_m3u8_playlist_using_ffmpeg(ffmpegexec, playlist_url, playlist_fragm
         if not line:
           break
         line = line.strip()
-        if ' Opening \'http://sip-ruv-vod.dcp.adaptive.level3.net' in line:
+        if ' Opening \'https://{}'.format(_RUV_URL) in line:
           completed_chunks += 1
           printProgress(min(completed_chunks, total_chunks), total_chunks, prefix = 'Downloading:', suffix = 'Working ', barLength = 25)
       except UnicodeDecodeError:
@@ -325,8 +332,6 @@ def getShowTimes(days_back = 0):
     from_date = today - dateutil.relativedelta.relativedelta(days=days_back)
   
   # Construct the URL for the last month and download the TV schedule
-  #http://muninn.ruv.is/files/xml/ruv/2017-06-15/2017-07-09/
-  #url = "http://muninn.ruv.is/files/xml/ruv/{0}/{1}/$download".format(from_date.strftime('%Y-%m-%d'), today.strftime('%Y-%m-%d'))
   url = "http://muninn.ruv.is/files/xml/ruv/{0}/{1}/".format(from_date.strftime('%Y-%m-%d'), today.strftime('%Y-%m-%d'))
     
   schedule = {}
@@ -550,12 +555,12 @@ def findffmpeg(path_to_ffmpeg_install=None, working_dir=None):
     return path_to_ffmpeg_install
 
   # Attempts to search for it under the bin folder
-  bin_dist = os.path.join(working_dir, "..\\bin\\ffmpeg.exe")
+  bin_dist = os.path.join(working_dir, "..", "bin", "ffmpeg.exe")
   if os.path.isfile(bin_dist):
     return str(Path(bin_dist).resolve())
   
   # Throw an error
-  raise ValueError('Could not locate FFMPEG install, please use the --ffmpeg switch to specify the path to the ffmpeg.exe file on your system.')
+  raise ValueError('Could not locate FFMPEG install, please use the --ffmpeg switch to specify the path to the ffmpeg executable on your system.')
 
     
 # The main entry point for the script
