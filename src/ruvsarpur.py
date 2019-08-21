@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 # coding=utf-8
-__version__ = "2.2.0"
+__version__ = "3.0.0"
 # When modifying remember to issue a new tag command in git before committing, then push the new tag
-#   git tag -a v2.2.0 -m "v2.2.0"
+#   git tag -a v3.0.0 -m "v3.0.0"
 #   git push origin --tags
 """
 Python script that allows you to download TV shows off the Icelandic RÚV Sarpurinn website.
@@ -29,6 +29,7 @@ Author: Sverrir Sigmundarson  info@sverrirs.com  https://www.sverrirs.com
 #      For alternative install http://stackoverflow.com/a/33163704
 
 import sys, os.path, re
+import traceback   # For exception details
 import textwrap # For text wrapping in the console window
 from colorama import init, deinit # For colorized output to console windows (platform and shell independent)
 from termcolor import colored # For shorthand color printing to the console, https://pypi.python.org/pypi/termcolor
@@ -88,10 +89,14 @@ QUALITY_BITRATE = {
 
 # The url patterns that will be executed to try to discover the material
 # Example: http://sip-ruv-vod.dcp.adaptive.level3.net/lokad/2018/02/19/500kbps/4942522T0.mp4.m3u8
+# New format in August 2019:
+#    https://ruv-vod-app-dcp-v4.secure.footprint.net/opid/manifest.m3u8?tlm=hls&streams=2019/08/17/2400kbps/5028451T0.mp4.m3u8:2400,2019/08/17/500kbps/5028451T0.mp4.m3u8:500,2019/08/17/800kbps/5028451T0.mp4.m3u8:800,2019/08/17/1200kbps/5028451T0.mp4.m3u8:1200,2019/08/17/3600kbps/5028451T0.mp4.m3u8:3600
 PLAYLIST_URLS = [
-  'http://sip-ruv-vod.dcp.adaptive.level3.net/lokad/{0}/{1}/{2}/{3}/{4}{5}{6}.mp4.m3u8',
-  'http://sip-ruv-vod.dcp.adaptive.level3.net/opid/{0}/{1}/{2}/{3}/{4}{5}{6}.mp4.m3u8',
+  'https://ruv-vod-app-dcp-v4.secure.footprint.net/opid/manifest.m3u8?tlm=hls&streams={0}/{1}/{2}/{3}/{4}{5}{6}.mp4.m3u8',
+  'https://ruv-vod-app-dcp-v4.secure.footprint.net/lokad/manifest.m3u8?tlm=hls&streams={0}/{1}/{2}/{3}/{4}{5}{6}.mp4.m3u8',
 ]
+# Will use the parameter in following order
+# url.format(shown_year, shown_month, shown_day, QUALITY_BITRATE[video_quality]['code'], pid, letter, num)
              
 # Print console progress bar
 # http://stackoverflow.com/a/34325723
@@ -189,7 +194,7 @@ def find_m3u8_playlist_url(item, display_title, video_quality):
       for letter in ['T','S','R','M','K']: #,'A','B','C','D','E','F','G','H','I','J','L','N','O','P','Q','U','V','W','X','Y','Z']:
         url_formatted = url.format(shown_year, shown_month, shown_day, QUALITY_BITRATE[video_quality]['code'], pid, letter, num)
         #print(url_formatted)
-        url_path = '/'.join(url_formatted.split('/')[:-1])
+        url_path = '/'.join(url_formatted.split('/manifest')[:-1])
         try:
           # Add default headers
           headers = {'User-Agent':'Mozilla/5.0 (Windows NT 6.1; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/63.0.3239.132 Safari/537.36'}
@@ -200,8 +205,26 @@ def find_m3u8_playlist_url(item, display_title, video_quality):
           # If there wasn't a success then continue with the next url attempt
           if request is None or not request.status_code == 200 or len(request.text) <= 0:
             continue
+
+          # In August 2019 they changed the system to have an indirect file first that contains some additional urls
+          # detect if we're dealing with that kind of file because then it will actually point us to the actual m3u8 file to 
+          # download and parse like normal
           
-          fragments = ['{0}/{1}'.format(url_path, line.strip()) for line in request.text.splitlines() if line[0] != '#']
+          fragments = ['{0}/{1}'.format(url_path, line.strip()) for line in request.text.splitlines() if len(line) > 1 and line[0] != '#']
+
+          # If fragments is length 1 and the only fragment in there contains the text ".m3u8?tlm=hls&streams" then we do the download again and reparse
+          if len(fragments) == 1 and fragments[0].find('.m3u8?tlm=hls&streams') > 0:
+            # Perform the get
+            request = __create_retry_session().get(fragments[0], stream=False, timeout=5, verify=False, headers=headers)
+
+            # If there wasn't a success then continue with the next url attempt
+            if request is None or not request.status_code == 200 or len(request.text) <= 0:
+              continue
+
+            # In August 2019 they changed the system to have an indirect file first that contains some additional urls
+            # detect if we're dealing with that kind of file because then it will actually point us to the actual m3u8 file to 
+            # download and parse like normal
+            fragments = ['{0}/{1}'.format(url_path, line.strip()) for line in request.text.splitlines() if len(line) > 1 and line[0] != '#']
 
           # We found a playlist file, let's return the url and the fragments
           return {'url': url_formatted, 'fragments':fragments}
@@ -209,6 +232,7 @@ def find_m3u8_playlist_url(item, display_title, video_quality):
         except Exception as ex:
           print( "Error while discovering playlist for {1} from '{0}'".format(url_formatted, color_title(display_title)))
           print( ex )
+          traceback.print_stack()
           return None
     
   print( "{0} not found on server (pid={1})".format(color_title(display_title), pid))
@@ -259,6 +283,7 @@ def download_m3u8_playlist_using_ffmpeg(ffmpegexec, playlist_url, playlist_fragm
   printProgress(completed_chunks, total_chunks, prefix = 'Downloading:', suffix = 'Starting', barLength = 25)
 
   # Run the app and collect the output
+  print(prog_args)
   ret = subprocess.Popen(prog_args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True, env=my_env)
   try:
     while True:
@@ -267,7 +292,7 @@ def download_m3u8_playlist_using_ffmpeg(ffmpegexec, playlist_url, playlist_fragm
         if not line:
           break
         line = line.strip()
-        if ' Opening \'http://sip-ruv-vod.dcp.adaptive.level3.net' in line:
+        if ' Opening \'https://ruv-vod-app-dcp-v4.secure.footprint.net' in line:
           completed_chunks += 1
           printProgress(min(completed_chunks, total_chunks), total_chunks, prefix = 'Downloading:', suffix = 'Working ', barLength = 25)
       except UnicodeDecodeError:
@@ -725,6 +750,7 @@ def runMain():
         print("Error: Could not download show playlist, not found on server. Try requesting a different video quality.")
         continue
 
+      #print(playlist_data
       # Now ask FFMPEG to download and remux all the fragments for us
       result = download_m3u8_playlist_using_ffmpeg(ffmpegexec, playlist_data['url'], playlist_data['fragments'], local_filename, display_title, args.keeppartial, args.quality)
       if( not result is None ):
