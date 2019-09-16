@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 # coding=utf-8
-__version__ = "3.0.0"
+__version__ = "4.0.0"
 # When modifying remember to issue a new tag command in git before committing, then push the new tag
-#   git tag -a v3.0.0 -m "v3.0.0"
+#   git tag -a v4.0.0 -m "v4.0.0"
 #   git push origin --tags
 """
 Python script that allows you to download TV shows off the Icelandic RÚV Sarpurinn website.
@@ -87,13 +87,15 @@ QUALITY_BITRATE = {
     "HD1080"  : { 'code': "3600kbps", 'chunk_size':4000000}
 }
 
+RUV_URL = 'ruv-vod-app-dcp-v4.secure.footprint.net'
+
 # The url patterns that will be executed to try to discover the material
 # Example: http://sip-ruv-vod.dcp.adaptive.level3.net/lokad/2018/02/19/500kbps/4942522T0.mp4.m3u8
 # New format in August 2019:
 #    https://ruv-vod-app-dcp-v4.secure.footprint.net/opid/manifest.m3u8?tlm=hls&streams=2019/08/17/2400kbps/5028451T0.mp4.m3u8:2400,2019/08/17/500kbps/5028451T0.mp4.m3u8:500,2019/08/17/800kbps/5028451T0.mp4.m3u8:800,2019/08/17/1200kbps/5028451T0.mp4.m3u8:1200,2019/08/17/3600kbps/5028451T0.mp4.m3u8:3600
 PLAYLIST_URLS = [
-  'https://ruv-vod-app-dcp-v4.secure.footprint.net/opid/manifest.m3u8?tlm=hls&streams={0}/{1}/{2}/{3}/{4}{5}{6}.mp4.m3u8',
-  'https://ruv-vod-app-dcp-v4.secure.footprint.net/lokad/manifest.m3u8?tlm=hls&streams={0}/{1}/{2}/{3}/{4}{5}{6}.mp4.m3u8',
+  'https://'+RUV_URL+'/opid/manifest.m3u8?tlm=hls&streams={0}/{1}/{2}/{3}/{4}{5}{6}.mp4.m3u8',
+  'https://'+RUV_URL+'/lokad/manifest.m3u8?tlm=hls&streams={0}/{1}/{2}/{3}/{4}{5}{6}.mp4.m3u8',
 ]
 # Will use the parameter in following order
 # url.format(shown_year, shown_month, shown_day, QUALITY_BITRATE[video_quality]['code'], pid, letter, num)
@@ -191,8 +193,11 @@ def find_m3u8_playlist_url(item, display_title, video_quality):
   shown_day = item['showtime'][8:10]
   for url in PLAYLIST_URLS:
     for num in range(30):
-      for letter in ['T','S','R','M','K']: #,'A','B','C','D','E','F','G','H','I','J','L','N','O','P','Q','U','V','W','X','Y','Z']:
+      for letter in ['T','S','R','M','K','A']: #,'A','B','C','D','E','F','G','H','I','J','L','N','O','P','Q','U','V','W','X','Y','Z']:
         url_formatted = url.format(shown_year, shown_month, shown_day, QUALITY_BITRATE[video_quality]['code'], pid, letter, num)
+        if 'vod_url' in item: 
+          url_formatted = '{0}{1}/{2}.mp4.m3u8'.format(item['vod_url'], QUALITY_BITRATE[video_quality]['code'], item['vod_dlcode'])
+        
         #print(url_formatted)
         url_path = '/'.join(url_formatted.split('/manifest')[:-1])
         try:
@@ -292,7 +297,7 @@ def download_m3u8_playlist_using_ffmpeg(ffmpegexec, playlist_url, playlist_fragm
         if not line:
           break
         line = line.strip()
-        if ' Opening \'https://ruv-vod-app-dcp-v4.secure.footprint.net' in line:
+        if ' Opening \'https://{0}'.format(RUV_URL) in line:
           completed_chunks += 1
           printProgress(min(completed_chunks, total_chunks), total_chunks, prefix = 'Downloading:', suffix = 'Working ', barLength = 25)
       except UnicodeDecodeError:
@@ -469,6 +474,7 @@ def parseArguments():
   parser.add_argument("--new", help="Filters the list of results to only show recently added shows (shows that have just had their first episode aired)", action="store_true")
 
   parser.add_argument("--originaltitle", help="Includes the original title of the show in the filename if it was found (this is usually the foreign title of the series or movie)", action="store_true")
+  parser.add_argument("--voddirect", help="Experimental, forces the script to fetch series information directly from the RUV VOD API. This setting requires the SID parameter and no other filtering is supported", action="store_true")
 
   parser.add_argument("--ffmpeg",       help="Full path to the ffmpeg executable file", 
                                         type=str)
@@ -575,13 +581,62 @@ def findffmpeg(path_to_ffmpeg_install=None, working_dir=None):
     return path_to_ffmpeg_install
 
   # Attempts to search for it under the bin folder
-  bin_dist = os.path.join(working_dir, "..\\bin\\ffmpeg.exe")
+  bin_dist = os.path.join(working_dir, "..","bin","ffmpeg.exe")
   if os.path.isfile(bin_dist):
     return str(Path(bin_dist).resolve())
   
   # Throw an error
-  raise ValueError('Could not locate FFMPEG install, please use the --ffmpeg switch to specify the path to the ffmpeg.exe file on your system.')
+  raise ValueError('Could not locate FFMPEG install, please use the --ffmpeg switch to specify the path to the ffmpeg executable on your system.')
 
+RE_CAPTURE_VOD_URL = re.compile(r'(?P<urlprefix>.*tlm=hls&streams=20\d{2}\/\d{2}\/[0-3]\d\/)\d+kbps\/(?P<dlcode>\w+)\.mp4\.m3u8', re.IGNORECASE)
+# 
+# Attempts to download a series configuration from the new RUV VoD API service
+# this is very preliminary and experimental.
+def getVodTvSerieseSchedule(args_sid):
+  r = requests.get('https://api.ruv.is/api/programs/program/{0}/all'.format(args_sid))
+  data = json.loads(r.content.decode())
+
+  schedule = {}
+  #schedule['date'] = datetime.date.today()
+
+  for episode in data['episodes']:
+    entry = {}
+
+    entry['title'] = data['title']
+    entry['pid'] = str(episode['event'])
+    entry['showtime'] = episode['firstrun']
+    entry['duration'] = str(episode['duration'])
+    entry['sid'] = str(data['id'])
+    entry['desc'] = data['short_description']
+    entry['original-title'] = data['foreign_title']
+
+    entry['catid'] = "0"
+    entry['cat'] = "VOD"
+
+    entry['ep_num'] = str(episode['number'])
+    entry['ep_total'] = str(data['web_available_episodes'])
+
+    if data['multiple_episodes']:
+      # Append the episode number to the show title if it is a real multi-episode show
+      entry['title'] += " ("+entry['ep_num']+" af "+entry['ep_total']+")"
+    else:
+      # If it isn't a multi episode show then append the date to the title (to avoid overwriting files)
+      entry['title'] += " ("+sanitizeFileName(entry['showtime'][:16], "") +")"
+
+    # Special handling for the new vod files as they have their URL already coded
+    entry['vod_url'] = getGroup(RE_CAPTURE_VOD_URL, 'urlprefix', episode['file'])
+    entry['vod_dlcode'] = getGroup(RE_CAPTURE_VOD_URL, 'dlcode', episode['file'])
+
+    schedule[entry['pid']] = entry
+
+  return schedule
+
+def getGroup(regex, group_name, haystack):
+  for match in re.finditer(regex, haystack):
+    match_value = match.group(group_name).strip()
+    if len(match_value) > 0:
+      return match_value
+  return None
     
 # The main entry point for the script
 def runMain():
@@ -611,20 +666,29 @@ def runMain():
     # Get information about already downloaded episodes
     previously_recorded = getPreviouslyRecordedShows(previously_recorded_file_name)
 
-    # Get an existing tv schedule if possible
-    if( not args.refresh ):
-      schedule = getExistingTvSchedule(tv_schedule_file_name)
-    
-    if( args.refresh or schedule is None or schedule['date'].date() < today ):
-      if( args.days is not None and args.days > 0 ):
-        print("Updating TV Schedule {0} days into the past".format(args.days))
-        schedule = getShowTimes(args.days)
-      else: 
-        print("Updating TV Schedule for the last month")
-        schedule = getShowTimes()
+    # If we're interested in downloading from the new sarpur then honor this override right now
+    if args.voddirect:
+      if not args.sid or len(args.sid) != 1:
+        print("When downloading from RUV VOD service then you must provide the series SID (no other filters are supported, e.g. pid, find, category). Only provide a single SID")
+        sys.exit(100)
       
-    # Save the tv schedule as the most current one
-    saveCurrentTvSchedule(schedule,tv_schedule_file_name)
+      schedule = getVodTvSerieseSchedule(args.sid[0]) # https://api.ruv.is/api/programs/program/28195/all
+
+    else:
+      # Get an existing tv schedule if possible
+      if( not args.refresh ):
+        schedule = getExistingTvSchedule(tv_schedule_file_name)
+      
+      if( args.refresh or schedule is None or schedule['date'].date() < today ):
+        if( args.days is not None and args.days > 0 ):
+          print("Updating TV Schedule {0} days into the past".format(args.days))
+          schedule = getShowTimes(args.days)
+        else: 
+          print("Updating TV Schedule for the last month")
+          schedule = getShowTimes()
+        
+      # Save the tv schedule as the most current one
+      saveCurrentTvSchedule(schedule,tv_schedule_file_name)
     
     if( args.debug ):
       for key, schedule_item in schedule.items():
