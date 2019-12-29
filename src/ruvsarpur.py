@@ -1,9 +1,9 @@
 #!/usr/bin/env python
 # coding=utf-8
-__version__ = "4.0.0"
+__version__ = "5.0.0"
 # When modifying remember to issue a new tag command in git before committing, then push the new tag
-#   git tag -a v4.0.0 -m "v4.0.0"
-#   git push origin --tags
+#   git tag -a v5.0.0 -m "v5.0.0"
+#   git push origin master --tags
 """
 Python script that allows you to download TV shows off the Icelandic RÚV Sarpurinn website.
 The script is written in Python 3.5
@@ -196,7 +196,10 @@ def find_m3u8_playlist_url(item, display_title, video_quality):
       for letter in ['T','S','R','M','K','A']: #,'A','B','C','D','E','F','G','H','I','J','L','N','O','P','Q','U','V','W','X','Y','Z']:
         url_formatted = url.format(shown_year, shown_month, shown_day, QUALITY_BITRATE[video_quality]['code'], pid, letter, num)
         if 'vod_url' in item: 
-          url_formatted = '{0}{1}/{2}.mp4.m3u8'.format(item['vod_url'], QUALITY_BITRATE[video_quality]['code'], item['vod_dlcode'])
+          if 'vod_alt' in item: # If this is an alternative download url then don't inject the QUALITY bitrate (as it is not supported)
+            url_formatted = '{0}{1}.mp4.m3u8'.format(item['vod_url'], item['vod_dlcode'])
+          else:
+            url_formatted = '{0}{1}/{2}.mp4.m3u8'.format(item['vod_url'], QUALITY_BITRATE[video_quality]['code'], item['vod_dlcode'])
         
         #print(url_formatted)
         url_path = '/'.join(url_formatted.split('/manifest')[:-1])
@@ -360,8 +363,7 @@ def getShowTimes(days_back = 0):
   url = "http://muninn.ruv.is/files/xml/ruv/{0}/{1}/".format(from_date.strftime('%Y-%m-%d'), today.strftime('%Y-%m-%d'))
     
   schedule = {}
-  schedule['date'] = today
-
+  print("{0} | Since: {1}".format(color_title('Downloading TV schedule'), from_date.strftime('%Y-%m-%d')))
   schedule_xml = download_xml(url)
   if( schedule_xml is None):
     print("Could not download TV schedule, exiting")
@@ -421,8 +423,11 @@ def getShowTimes(days_back = 0):
 def printTvShowDetails(args, show):
   if( not 'pid' in show ):
     return
-      
-  print( color_pid(show['pid'])+ ": "+color_title(createShowTitle(show, args.originaltitle)))
+
+  # Mark all VOD sourced shows
+  vodmark = ' - '+ color_sid('VOD') if 'vod_dlcode' in show else ''
+
+  print( color_pid(show['pid'])+ ": "+color_title(createShowTitle(show, args.originaltitle)) + vodmark)
   print( color_sid(show['sid'].rjust(7)) + ": Sýnt "+show['showtime'][:-3] )
   if( args.desc and 'desc' in show ):
     for desc_line in textwrap.wrap(show['desc'], width=60):
@@ -474,10 +479,11 @@ def parseArguments():
   parser.add_argument("--new", help="Filters the list of results to only show recently added shows (shows that have just had their first episode aired)", action="store_true")
 
   parser.add_argument("--originaltitle", help="Includes the original title of the show in the filename if it was found (this is usually the foreign title of the series or movie)", action="store_true")
-  parser.add_argument("--voddirect", help="Experimental, forces the script to fetch series information directly from the RUV VOD API. This setting requires the SID parameter and no other filtering is supported", action="store_true")
 
   parser.add_argument("--ffmpeg",       help="Full path to the ffmpeg executable file", 
                                         type=str)
+
+  parser.add_argument("--onlyvod", help="Filters the list to only include episodes available on the VOD service (video on demand) and not the broadcast schedule lists", action="store_true")
 
   return parser.parse_args()
  
@@ -511,8 +517,10 @@ def getPreviouslyRecordedShows(rec_file_name):
     return []
 
 def saveCurrentTvSchedule(schedule,tv_file_name):
+  today = datetime.date.today()
+
   # Format the date field
-  schedule['date'] = schedule['date'].strftime('%Y-%m-%d')
+  schedule['date'] = today.strftime('%Y-%m-%d')
 
   #make sure that the log directory exists
   os.makedirs(os.path.dirname(tv_file_name), exist_ok=True)
@@ -588,44 +596,104 @@ def findffmpeg(path_to_ffmpeg_install=None, working_dir=None):
   # Throw an error
   raise ValueError('Could not locate FFMPEG install, please use the --ffmpeg switch to specify the path to the ffmpeg executable on your system.')
 
+# Regex to extract the necessary VOD data from the files url
 RE_CAPTURE_VOD_URL = re.compile(r'(?P<urlprefix>.*tlm=hls&streams=20\d{2}\/\d{2}\/[0-3]\d\/)\d+kbps\/(?P<dlcode>\w+)\.mp4\.m3u8', re.IGNORECASE)
-# 
-# Attempts to download a series configuration from the new RUV VoD API service
-# this is very preliminary and experimental.
-def getVodTvSerieseSchedule(args_sid):
-  r = requests.get('https://api.ruv.is/api/programs/program/{0}/all'.format(args_sid))
+RE_CAPTURE_VOD_URL_ALTERNATE = re.compile(r'(?P<urlprefix>.*tlm=hls&streams=(20\d{2}\/\d{2}\/[0-3]\d\/)?)(?P<dlcode>\w+)\.mp4\.m3u8', re.IGNORECASE)
+RE_CAPTURE_VOD_EPNUM_FROM_TITLE = re.compile(r'(?P<ep_num>\d+) af (?P<ep_total>\d+)', re.IGNORECASE)
+
+#
+# Downloads the full front page VOD schedule and for each episode in there fetches all available episodes
+# uses the new RUV GraphQL queries
+def getVodSchedule():
+  r = requests.post(
+    url='https://graphqladdi.spilari.ruv.is',
+    headers={'content-type': 'application/json', 'Referer' : 'https://www.ruv.is/sjonvarp', 'Origin': 'https://www.ruv.is' },
+    data='{\"operationName\":null,\"variables\":{},\"query\":\"{ Featured(station: tv) { metro: panels(slug: {value: \\\"hladbord\\\", arg: NotEqual}) { title display_style programs { title short_description foreign_title portrait_image id slug image __typename } __typename } __typename }}\"}')
+  data = json.loads(r.content.decode())
+
+  completed_programs = 0
+  total_programs = 0
+  for panel in data['data']['Featured']['metro']:
+    total_programs += len(panel['programs'])
+
+  print("{0} | Total: {1} Series".format(color_title('Downloading VOD schedule'), total_programs))
+  printProgress(completed_programs, total_programs, prefix = 'Reading:', suffix = '', barLength = 25)
+
+  schedule = {}
+  # Now iterate first through every group and for every thing in the group request all episodes for that 
+  # item (there is no programmatic way of distinguishing between how many episodes there are)
+  for panel in data['data']['Featured']['metro']:
+    for program in panel['programs']:
+      completed_programs += 1
+      if program is None or not 'id' in program:
+        continue
+
+      # Add all details for the given program to the schedule
+      schedule.update(getVodSeriesSchedule(program['id'], program))
+      printProgress(completed_programs, total_programs, prefix = 'Reading:', suffix ='', barLength = 25)
+
+  return schedule
+
+#
+# Given a series id and program data, downloads all 
+# episodes available for that series
+def getVodSeriesSchedule(sid, data):
+  r = requests.post(
+    url='https://graphqladdi.spilari.ruv.is', 
+    headers={'content-type': 'application/json', 'Referer' : 'https://www.ruv.is/sjonvarp', 'Origin': 'https://www.ruv.is' },
+    data='{\"operationName\":null,\"variables\":{},\"query\":\"{ Program(id:'+str(sid)+') { episodes { id file firstrun scope rating title short_description description image duration number __typename } title short_description foreign_title portrait_image id slug image __typename } __typename }\"}')
   data = json.loads(r.content.decode())
 
   schedule = {}
-  #schedule['date'] = datetime.date.today()
+  prog = data['data']['Program']
 
-  for episode in data['episodes']:
+  series_title = prog['title']
+  foreign_title = prog['foreign_title']
+
+  for episode in prog['episodes']:
     entry = {}
 
-    entry['title'] = data['title']
-    entry['pid'] = str(episode['event'])
+    entry['title'] = series_title
+    entry['pid'] = str(episode['id'])
     entry['showtime'] = episode['firstrun']
     entry['duration'] = str(episode['duration'])
-    entry['sid'] = str(data['id'])
-    entry['desc'] = data['short_description']
-    entry['original-title'] = data['foreign_title']
+    entry['sid'] = str(sid)
+    entry['desc'] = prog['short_description']
+    entry['original-title'] = prog['foreign_title']
 
     entry['catid'] = "0"
     entry['cat'] = "VOD"
 
     entry['ep_num'] = str(episode['number'])
-    entry['ep_total'] = str(data['web_available_episodes'])
+    entry['ep_total'] = getGroup(RE_CAPTURE_VOD_EPNUM_FROM_TITLE, 'ep_total', episode['title'])
+    if not entry['ep_total'] is None:
+      entry['ep_total'] = str(entry['ep_total'])
 
-    if data['multiple_episodes']:
-      # Append the episode number to the show title if it is a real multi-episode show
-      entry['title'] += " ("+entry['ep_num']+" af "+entry['ep_total']+")"
-    else:
-      # If it isn't a multi episode show then append the date to the title (to avoid overwriting files)
-      entry['title'] += " ("+sanitizeFileName(entry['showtime'][:16], "") +")"
+    # Create the episode numbers programatically to ensure consistency if we're dealing with multi-episode program
+    if not entry['ep_total'] is None and int(entry['ep_total']) > 0:
+      entry['title'] = '{0} ({1} af {2})'.format(series_title, entry['ep_num'], entry['ep_total'])
+
+    # If this is not a movie but a re-occuring episode then append the title (which is usually the date shown)
+    # e.g. the news, kastljos, weather
+    if entry['ep_total'] is None and not episode['title'] is None and len(episode['title']) > 0:
+      entry['title'] = '{0} ({1})'.format(series_title, episode['title'])
 
     # Special handling for the new vod files as they have their URL already coded
     entry['vod_url'] = getGroup(RE_CAPTURE_VOD_URL, 'urlprefix', episode['file'])
     entry['vod_dlcode'] = getGroup(RE_CAPTURE_VOD_URL, 'dlcode', episode['file'])
+
+    # If nothing found then see if this is a LIVE broadcast url
+    if entry['vod_dlcode'] is None:
+      entry['vod_url'] = getGroup(RE_CAPTURE_VOD_URL_ALTERNATE, 'urlprefix', episode['file'])
+      entry['vod_dlcode'] = getGroup(RE_CAPTURE_VOD_URL_ALTERNATE, 'dlcode', episode['file'])
+      entry['vod_alt'] = True
+    
+    # If no VOD code can be found then this cannot be downloaded
+    if entry['vod_dlcode'] is None:
+      continue
+
+    # The vod-dlcode is the same as the pid from the old tv schedule, remove the last two characters and update
+    entry['pid'] = entry['vod_dlcode'][:-2]
 
     schedule[entry['pid']] = entry
 
@@ -666,30 +734,29 @@ def runMain():
     # Get information about already downloaded episodes
     previously_recorded = getPreviouslyRecordedShows(previously_recorded_file_name)
 
-    # If we're interested in downloading from the new sarpur then honor this override right now
-    if args.voddirect:
-      if not args.sid or len(args.sid) != 1:
-        print("When downloading from RUV VOD service then you must provide the series SID (no other filters are supported, e.g. pid, find, category). Only provide a single SID")
-        sys.exit(100)
-      
-      schedule = getVodTvSerieseSchedule(args.sid[0]) # https://api.ruv.is/api/programs/program/28195/all
-
-    else:
-      # Get an existing tv schedule if possible
-      if( not args.refresh ):
-        schedule = getExistingTvSchedule(tv_schedule_file_name)
-      
-      if( args.refresh or schedule is None or schedule['date'].date() < today ):
-        if( args.days is not None and args.days > 0 ):
-          print("Updating TV Schedule {0} days into the past".format(args.days))
-          schedule = getShowTimes(args.days)
-        else: 
-          print("Updating TV Schedule for the last month")
-          schedule = getShowTimes()
-        
-      # Save the tv schedule as the most current one
-      saveCurrentTvSchedule(schedule,tv_schedule_file_name)
+    # Get an existing tv schedule if possible
+    if( not args.refresh ):
+      schedule = getExistingTvSchedule(tv_schedule_file_name)
     
+    if( args.refresh or schedule is None or schedule['date'].date() < today ):
+      schedule = {}
+      if( args.days is not None and args.days > 0 ):
+        print("Updating TV Schedule {0} days into the past".format(args.days))
+        schedule = getShowTimes(args.days)
+      else: 
+        print("Updating TV Schedule for the last month")
+        schedule = getShowTimes()
+
+      # Downloading the full VOD available schedule as well
+      vod_schedule = getVodSchedule()
+
+      # Merge the two schedules into one, add the new vod stuff in there 
+      # overwriting any old stuff
+      schedule.update(vod_schedule)
+      
+    # Save the tv schedule as the most current one
+    saveCurrentTvSchedule(schedule,tv_schedule_file_name)
+
     if( args.debug ):
       for key, schedule_item in schedule.items():
         printTvShowDetails(args, schedule_item)
@@ -704,11 +771,18 @@ def runMain():
         continue
       
       # If excluded by date then don't consider (2016-09-04 08:46:00)
-      if( args.days is not None ):
-        show_date = datetime.datetime.strptime(schedule_item['showtime'], '%Y-%m-%d %H:%M:%S')
-        if( show_date.date() < filter_older_than_date ):      
+      #if( args.days is not None ):
+      #  show_date = datetime.datetime.strptime(schedule_item['showtime'], '%Y-%m-%d %H:%M:%S')
+      #  if( show_date.date() < filter_older_than_date ):      
+      #    if( args.debug ):
+      #      print("Excluded show '"+createShowTitle(schedule_item, args.originaltitle)+"' "+schedule_item['pid']+ " due to date limit ("+schedule_item['showtime']+")")
+      #    continue
+
+      # Filter non-VOD shows if explicitly requested
+      if args.onlyvod is not None:
+        if not 'vod_dlcode' in schedule_item or schedule_item['vod_dlcode'] is None or len(schedule_item['vod_dlcode']) <= 0:
           if( args.debug ):
-            print("Excluded show '"+createShowTitle(schedule_item, args.originaltitle)+"' "+schedule_item['pid']+ " due to date limit ("+schedule_item['showtime']+")")
+            print("Excluded show '"+createShowTitle(schedule_item, args.originaltitle)+"' "+schedule_item['pid']+ " is not retrieved from VOD service")
           continue
           
       # Check if category exclusion

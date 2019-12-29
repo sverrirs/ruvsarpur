@@ -207,18 +207,21 @@ python ruvsarpur.py --find "Hvolpasveitin" -o "c:\videos\ruv\hvolpasveit"
 > `chcp 1252`
 > Otherwise the icelandic character set will not be correctly understood when the batch file is run
 
-You can additionally add the `--days` argument to only include shows from the N number of previous days (e.g. specify 1 if you intend to run this script every day, 7 if you only intend to run it once a week etc)
-
-```
-python ruvsarpur.py --sid 18457 --days 7  -o "c:\videos\ruv"
-```
-
 ### Downloading only a particular season of a series
 In the case you only want to download a particular run of a series then you should use the `--sid` option to monitor a particular tv series and `-o` to set the directory to save the video file into.
 
 ```
 python ruvsarpur.py --sid 18457 -o "c:\videos\ruv\hvolpasveit-season-1"
-```  
+```
+
+## RÚV Video-On-Demand (VOD) service features
+The script automatically sources files from the RÚV VOD service schedule as well. In some cases series can be duplicated between this service and the normal broadcast service resulting in duplicate listings.
+
+To limit the script to only download files from the VOD service use the `--onlyvod` option
+
+```
+python ruvsarpur.py --find Vesalingarnir -o "c:\videos\ruv\" --onlyvod
+```
 
 ## Frequently Asked Questions
 
