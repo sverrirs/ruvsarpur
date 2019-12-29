@@ -9,8 +9,7 @@
 
 Project website at https://sverrirs.github.io/ruvsarpur/
 
-> Note: As of version 2.0 this tool includes the ffmpeg video processing kit. If you are on any other platform than Windows 64bit you will need to [download the binary executable of ffmpeg](https://www.ffmpeg.org/download.html) for your operating system from the official website and then specify its path using the `--ffmpeg` command line parameter.
-
+If you are intending on using this tool outside of Iceland then I recommend a [VPN connection](http://www.expressrefer.com/refer-a-friend/30-days-free/?referrer_id=11147993). It's setup is discussed in more detail in a section near the end of this document
 
 # Demo
 <p align="center">
@@ -26,14 +25,12 @@ Before first use make sure you install all requirements using
 pip install -r requirements.txt
 ```
 
->> If you run into trouble installing the python-levenstein package (it is optional) then check out this solution on StackOverflow http://stackoverflow.com/a/33163704
+> If you run into trouble installing the python-levenstein package (it is optional) then check out this solution on StackOverflow http://stackoverflow.com/a/33163704
 
-## Contributing
-Please use a pull/rebase, e.g. `git pull --rebase origin master` when merging changes from master to your branch to avoid unnecessary merge commits.
-
+*This tool includes the ffmpeg video processing kit. If you are on any other platform than Windows 64bit you will need to [download the binary executable of ffmpeg](https://www.ffmpeg.org/download.html) for your operating system from the official website and then specify its path using the `--ffmpeg` command line parameter.*
 
 # ruvsarpur.py
-This is a python script that allows you to list, search and download TV shows off the Icelandic RÚV Sarpurinn website.
+This is a python script that allows you to list, search and download TV shows off the Icelandic RÚV Sarpurinn website. It is operated  solely through a windows or linux command prompt.
 
 ## Finding and listing shows
 After downloading the script can be run by typing in
