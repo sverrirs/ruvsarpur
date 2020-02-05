@@ -9,7 +9,7 @@
 
 Project website at https://sverrirs.github.io/ruvsarpur/
 
-If you are intending on using this tool outside of Iceland then I recommend a [VPN connection](http://www.expressrefer.com/refer-a-friend/30-days-free/?referrer_id=11147993). It's setup is discussed in more detail in a section near the end of this document
+If you are intending on using this tool outside of Iceland then I recommend a [VPN connection](http://www.expressrefer.com/refer-a-friend/30-days-free/?referrer_id=11147993). Its setup is discussed in more detail in a section near the end of this document
 
 # Demo
 <p align="center">
@@ -30,7 +30,7 @@ pip install -r requirements.txt
 *This tool includes the ffmpeg video processing kit. If you are on any other platform than Windows 64bit you will need to [download the binary executable of ffmpeg](https://www.ffmpeg.org/download.html) for your operating system from the official website and then specify its path using the `--ffmpeg` command line parameter.*
 
 # ruvsarpur.py
-This is a python script that allows you to list, search and download TV shows off the Icelandic RÚV Sarpurinn website. It is operated  solely through a windows or linux command prompt.
+This is a python script that allows you to list, search and download TV shows off the Icelandic RÚV Sarpurinn website. It is operated solely through a windows or linux command prompt.
 
 ## Finding and listing shows
 After downloading the script can be run by typing in
@@ -169,7 +169,7 @@ The `--days` argument can be used to filter the list by only listing shows added
 python ruvsarpur.py --list --category 1 --days 1
 ```
 
-The the `--new` flag limits the search and downloads to only new shows (e.g. shows that have just aired their first episode in a new multi-episode series). The example below will only list new children's shows on the TV schedule. 
+The `--new` flag limits the search and downloads to only new shows (e.g. shows that have just aired their first episode in a new multi-episode series). The example below will only list new children's shows on the TV schedule. 
 ```
 python ruvsarpur.py --list --category 1 --new
 ```
