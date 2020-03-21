@@ -1,12 +1,12 @@
 #!/usr/bin/env python
 # coding=utf-8
-__version__ = "5.0.0"
+__version__ = "6.0.0"
 # When modifying remember to issue a new tag command in git before committing, then push the new tag
-#   git tag -a v5.0.0 -m "v5.0.0"
+#   git tag -a v6.0.0 -m "v6.0.0"
 #   git push origin master --tags
 """
 Python script that allows you to download TV shows off the Icelandic RÚV Sarpurinn website.
-The script is written in Python 3.5
+The script is written in Python 3.5+
 
 See: https://github.com/sverrirs/ruvsarpur
 Author: Sverrir Sigmundarson  info@sverrirs.com  https://www.sverrirs.com
@@ -99,6 +99,23 @@ PLAYLIST_URLS = [
 ]
 # Will use the parameter in following order
 # url.format(shown_year, shown_month, shown_day, QUALITY_BITRATE[video_quality]['code'], pid, letter, num)
+
+# All the categories that will be downloaded by VOD, the first number determines the graphql query to use, 
+# the second value the category name to use in the query.
+vod_types_and_categories = [
+  (1, 'main')
+  ,(2, 'bokmenntir')
+  ,(2, 'gullkistan')
+  ,(2, 'menning')
+  ,(2, 'born')
+  ,(2, 'heimildamyndir')
+  ,(2, 'skemmtun')
+  ,(2, 'fraedsla')
+  ,(2, 'kvikmyndir')
+  ,(2, 'ithrottir')
+  ,(2, 'leiknir-thaettir')
+# ,(2, 'frettaefni')  ## Blahhh screw this category...
+]
              
 # Print console progress bar
 # http://stackoverflow.com/a/34325723
@@ -604,25 +621,34 @@ RE_CAPTURE_VOD_EPNUM_FROM_TITLE = re.compile(r'(?P<ep_num>\d+) af (?P<ep_total>\
 #
 # Downloads the full front page VOD schedule and for each episode in there fetches all available episodes
 # uses the new RUV GraphQL queries
-def getVodSchedule():
+def getVodSchedule(panelType, categoryName):
+
+  graphql_data = '{\"operationName\":null,\"variables\":{},\"query\":\"{ Featured(station: tv) { metro: panels(slug: {value: \\\"hladbord\\\", arg: NotEqual}) { title display_style programs { title short_description foreign_title portrait_image id slug image __typename } __typename } __typename }}\"}'
+  if panelType > 1:
+    graphql_data = '{\"operationName\":null,\"variables\":{},\"query\":\"{ Category(station: tv, category: \\\"'+categoryName+'\\\") { categories { programs { title description: short_description id slug image __typename } __typename } __typename }}\"}'
+
   r = requests.post(
     url='https://graphqladdi.spilari.ruv.is',
     headers={'content-type': 'application/json', 'Referer' : 'https://www.ruv.is/sjonvarp', 'Origin': 'https://www.ruv.is' },
-    data='{\"operationName\":null,\"variables\":{},\"query\":\"{ Featured(station: tv) { metro: panels(slug: {value: \\\"hladbord\\\", arg: NotEqual}) { title display_style programs { title short_description foreign_title portrait_image id slug image __typename } __typename } __typename }}\"}')
+    data=graphql_data)
+
   data = json.loads(r.content.decode())
 
+  panels_iter_fields = data['data']['Featured']['metro'] if panelType == 1 else data['data']['Category']['categories']
+  panels = []
   completed_programs = 0
   total_programs = 0
-  for panel in data['data']['Featured']['metro']:
+  for panel in panels_iter_fields:
     total_programs += len(panel['programs'])
+    panels.append(panel)
 
-  print("{0} | Total: {1} Series".format(color_title('Downloading VOD schedule'), total_programs))
+  print("{0} | Total: {1} Series in {2}".format(color_title('Downloading VOD schedule'), total_programs, categoryName))
   printProgress(completed_programs, total_programs, prefix = 'Reading:', suffix = '', barLength = 25)
 
   schedule = {}
   # Now iterate first through every group and for every thing in the group request all episodes for that 
   # item (there is no programmatic way of distinguishing between how many episodes there are)
-  for panel in data['data']['Featured']['metro']:
+  for panel in panels:
     for program in panel['programs']:
       completed_programs += 1
       if program is None or not 'id' in program:
@@ -747,8 +773,11 @@ def runMain():
         print("Updating TV Schedule for the last month")
         schedule = getShowTimes()
 
+      vod_schedule = {}
+
       # Downloading the full VOD available schedule as well
-      vod_schedule = getVodSchedule()
+      for typeValue, catName in vod_types_and_categories:
+        vod_schedule.update(getVodSchedule(typeValue, catName))
 
       # Merge the two schedules into one, add the new vod stuff in there 
       # overwriting any old stuff
@@ -800,7 +829,7 @@ def runMain():
         if( 'pid' in schedule_item and schedule_item['pid'] in args.pid):
           candidate_to_add = schedule_item
       elif( args.find is not None ):
-        if( 'title' in schedule_item and fuzz.partial_ratio( args.find, createShowTitle(schedule_item, args.originaltitle) ) > 80 ):
+        if( 'title' in schedule_item and fuzz.partial_ratio( args.find, createShowTitle(schedule_item, args.originaltitle) ) > 85 ):
           candidate_to_add = schedule_item
       else:
         # By default if there is no filtering then we simply list everything in the schedule
