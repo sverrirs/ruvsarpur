@@ -428,9 +428,9 @@ def getShowTimes(days_back = 0):
         if( int(entry['ep_total']) > 1 ):
           # Append the episode number to the show title if it is a real multi-episode show
           entry['title'] += " ("+entry['ep_num']+" af "+entry['ep_total']+")"
-        else:
+        #else:
           # If it isn't a multi episode show then append the date to the title (to avoid overwriting files)
-          entry['title'] += " ("+sanitizeFileName(entry['showtime'][:16], "") +")"
+          #entry['title'] += " ("+sanitizeFileName(entry['showtime'][:16], "") +")"
               
       # Save the entry into the main schedule
       schedule[entry['pid']] = entry
@@ -696,12 +696,12 @@ def getVodSeriesSchedule(sid, data):
       entry['ep_total'] = str(entry['ep_total'])
 
     # Create the episode numbers programatically to ensure consistency if we're dealing with multi-episode program
-    if not entry['ep_total'] is None and int(entry['ep_total']) > 0:
+    if not entry['ep_total'] is None and int(entry['ep_total']) > 1:
       entry['title'] = '{0} ({1} af {2})'.format(series_title, entry['ep_num'], entry['ep_total'])
 
     # If this is not a movie but a re-occuring episode then append the title (which is usually the date shown)
     # e.g. the news, kastljos, weather
-    if entry['ep_total'] is None and not episode['title'] is None and len(episode['title']) > 0:
+    if entry['ep_total'] is None and not episode['title'] is None and len(episode['title']) > 1:
       entry['title'] = '{0} ({1})'.format(series_title, episode['title'])
 
     # Special handling for the new vod files as they have their URL already coded
@@ -830,6 +830,10 @@ def runMain():
           candidate_to_add = schedule_item
       elif( args.find is not None ):
         if( 'title' in schedule_item and fuzz.partial_ratio( args.find, createShowTitle(schedule_item, args.originaltitle) ) > 85 ):
+          candidate_to_add = schedule_item
+        elif( 'title' in schedule_item and fuzz.partial_ratio( args.find, schedule_item['title'] ) > 85 ):
+          candidate_to_add = schedule_item
+        elif( 'original-title' in schedule_item and not schedule_item['original-title'] is None and fuzz.partial_ratio( args.find, schedule_item['original-title'] ) > 85 ):
           candidate_to_add = schedule_item
       else:
         # By default if there is no filtering then we simply list everything in the schedule
