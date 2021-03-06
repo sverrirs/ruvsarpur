@@ -145,33 +145,11 @@ The available values are:
 
 ## Advanced uses
 
-Using `--category` argument allows you to filter the tv schedule by category. For example to list only childrens tv shows use the category number 1
-```
-python ruvsarpur.py --list --category 1
-```
-
-The available categories are:
-```
-1='Börn'
-2='Framhaldsþættir'
-3='Fréttatengt'
-4='Fræðsla'
-5='Íþróttir'
-6='Íslenskir þættir'
-7='Kvikmyndir'
-9='Tónlist'
-13='Samfélag'
-17='Menning'
-```
-
-The `--days` argument can be used to filter the list by only listing shows added in the past _N_ number of days. For example, to list only children's shows that were added in the past day use:
-```
-python ruvsarpur.py --list --category 1 --days 1
-```
+*Note: As of v7.0.0 neither `--category` or `--days` are supported anymore.*
 
 The `--new` flag limits the search and downloads to only new shows (e.g. shows that have just aired their first episode in a new multi-episode series). The example below will only list new children's shows on the TV schedule. 
 ```
-python ruvsarpur.py --list --category 1 --new
+python ruvsarpur.py --list --new
 ```
 
 The `--keeppartial` flag can be used to keep partially downloaded files in case of errors, if omitted then the script deletes any incomplete partially downloaded files if an error occurs (this is the default behavior).
@@ -212,13 +190,7 @@ python ruvsarpur.py --sid 18457 -o "c:\videos\ruv\hvolpasveit-season-1"
 ```
 
 ## RÚV Video-On-Demand (VOD) service features
-The script automatically sources files from the RÚV VOD service schedule as well. In some cases series can be duplicated between this service and the normal broadcast service resulting in duplicate listings.
-
-To limit the script to only download files from the VOD service use the `--onlyvod` option
-
-```
-python ruvsarpur.py --find Vesalingarnir -o "c:\videos\ruv\" --onlyvod
-```
+*Note: As of v7.0.0 the script only supports VOD and the `--onlyvod` option has been removed*
 
 ## Frequently Asked Questions
 
