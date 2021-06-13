@@ -125,11 +125,13 @@ python ruvsarpur.py --pid 4849075 --checklocal
 
 ## Choosing video quality
 
-The script chooses automatically the 'Normal' video quality for all download streams, this is equivilent of SD (standard-definition) or 1200kbps.
+The script automatically attempts to download videos using the 'HD1080' video quality for all download streams, this is equivilent of Full-HD resolution or 3600kbps. This setting will give you the best possible offline viewing experience and the best video and audio quality when casting to modern TVs.
+
+Note: If you're intending the video files to be exclusively used on mobile phones then using the 'Normal' quality or 1200kbps will in most cases be sufficient and save you a lot of space and bandwidth. Normal is equivilent of SD (standard-definition).
 
 By using `--quality` you instruct the script to download either a higher or lower quality video.
 ```
-python ruvsarpur.py --pid 4849075 --quality "HD1080"
+python ruvsarpur.py --pid 4849075 --quality "HD720"
 ```
 
 The available values are:
