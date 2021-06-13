@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # coding=utf-8
-__version__ = "7.0.0"
+__version__ = "7.0.2"
 # When modifying remember to issue a new tag command in git before committing, then push the new tag
 #   git tag -a v6.0.0 -m "v6.0.0"
 #   git push origin master --tags
@@ -102,7 +102,7 @@ PLAYLIST_URLS = [
 
 # All the categories that will be downloaded by VOD, the first number determines the graphql query to use, 
 # the second value the category name to use in the query.
-vod_types_and_categories = [
+vod_types_and_categories = [  # Note that this corresponds to the top level list of pages available (Sjonvarp, Utvarp, Krakkaruv, Ungruv)
   (1, 'tv'),
   (2, 'krakkaruv'),
   (2, 'ungruv')
@@ -454,7 +454,7 @@ def parseArguments():
 
   parser.add_argument("-q", "--quality", help="The desired quality of the downloaded episode, default is 'Normal' which is Standard-Definition",
                                          choices=list(QUALITY_BITRATE.keys()),
-                                         default="Normal",
+                                         default="HD1080",
                                          type=str)
   
   parser.add_argument("-f", "--find", help="Searches the TV schedule for a program matching the text given",
@@ -634,7 +634,11 @@ def getVodSchedule(panelType, categoryName):
         continue
 
       # Add all details for the given program to the schedule
-      schedule.update(getVodSeriesSchedule(program['id'], program))
+      try:
+        schedule.update(getVodSeriesSchedule(program['id'], program))
+      except Exception as ex:
+          print( "Unable to retrieve schedule for VOD program '{0}', no episodes will be available for download from this program.".format(program['title']))
+          continue
       printProgress(completed_programs, total_programs, prefix = 'Reading:', suffix ='', barLength = 25)
 
   return schedule
@@ -764,7 +768,11 @@ def runMain():
 
       # Downloading the full VOD available schedule as well
       for typeValue, catName in vod_types_and_categories:
-        schedule.update(getVodSchedule(typeValue, catName))
+        try:
+          schedule.update(getVodSchedule(typeValue, catName))
+        except Exception as ex:
+          print( "Unable to retrieve schedule for VOD category '{0}', no episodes will be available for download from this category.".format(catName))
+          continue
       
     # Save the tv schedule as the most current one, save it to ensure we format the today date
     saveCurrentTvSchedule(schedule,tv_schedule_file_name)
