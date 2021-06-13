@@ -686,7 +686,7 @@ def getVodSeriesSchedule(sid, data):
   for episode in prog['episodes']:
     entry = {}
 
-    entry['title'] = '{0} - {1}'.format(series_title, episode['title']) if 'title' in episode and len(episode['title']) > 2 else series_title
+    entry['title'] = series_title
     entry['pid'] = str(episode['id'])
     entry['showtime'] = episode['firstrun']
     entry['duration'] = str(episode['duration']) if 'duration' in episode else ''
@@ -846,40 +846,9 @@ def runMain():
         # Now prepend the directory to the filename
         local_filename = os.path.join(args.output, local_filename)
 
-      # If the file has already been registered as downloaded then don't attempt to re-download
-      if( not args.force and item['pid'] in previously_recorded ):
-        print("'{0}' already recorded (pid={1})".format(color_title(display_title), item['pid']))
-        continue
-
-      # Before we attempt to download the file we should make sure we're not accidentally overwriting an existing file
-      if( not args.force and not args.checklocal):
-        # So, check for the existence of a file with the same name, if one is found then attempt to give
-        # our new file a different name and check again (append date and time), if still not unique then 
-        # create file name with guid, if still not unique then fail!
-        if( not isLocalFileNameUnique(local_filename) ):
-          # Check with date
-          local_filename = "{0}_{1}.mp4".format(local_filename.split(".mp4")[0], datetime.datetime.now().strftime("%Y-%m-%d"))
-          if( not isLocalFileNameUnique(local_filename)):
-            local_filename = "{0}_{1}.mp4".format(local_filename.split(".mp4")[0], str(uuid.uuid4()))
-            if( not isLocalFileNameUnique(local_filename)):      
-              print("Error: unabled to create a local file name for '{0}', check your output folder (pid={1})".format(color_title(display_title), item['pid']))
-              continue
-
-      # If the checklocal option is enabled then we don't want to try to download unless force is set
-      if( not args.force and args.checklocal and not isLocalFileNameUnique(local_filename) ):
-        # Store the id as already recorded and save to the file 
-        print("'{0}' found locally and marked as already recorded (pid={1})".format(color_title(display_title), item['pid']))
-        appendNewPidAndSavePreviouslyRecordedShows(item['pid'], previously_recorded, previously_recorded_file_name)
-        continue
-
-      #############################################
-      # We will rely on ffmpeg to do the playlist download and merging for us
-      # the tool is much better suited to this than manually merging as there
-      # are always some corruption issues in the merged stream if done in code
 
       #############################################
       # First download the URL for the listing
-    
       ep_graphdata = '?operationName=getProgramType&variables={"id":'+str(item['sid'])+',"episodeId":["'+str(item['pid'])+'"]}&extensions={"persistedQuery":{"version":1,"sha256Hash":"9d18a07f82fcd469ad52c0656f47fb8e711dc2436983b53754e0c09bad61ca29"}}'
       data = requestsVodDataRetrieveWithRetries(ep_graphdata)     
       if data is None or len(data) < 1:
@@ -911,6 +880,37 @@ def runMain():
       except:
         print("Error: Could not retrieve episode download url due to parsing error in VOD data, skipping "+item['title'])
         continue
+
+      # If the file has already been registered as downloaded then don't attempt to re-download
+      if( not args.force and item['pid'] in previously_recorded ):
+        print("'{0}' already recorded (pid={1})".format(color_title(display_title), item['pid']))
+        continue
+
+      # Before we attempt to download the file we should make sure we're not accidentally overwriting an existing file
+      if( not args.force and not args.checklocal):
+        # So, check for the existence of a file with the same name, if one is found then attempt to give
+        # our new file a different name and check again (append date and time), if still not unique then 
+        # create file name with guid, if still not unique then fail!
+        if( not isLocalFileNameUnique(local_filename) ):
+          # Check with date
+          local_filename = "{0}_{1}.mp4".format(local_filename.split(".mp4")[0], datetime.datetime.now().strftime("%Y-%m-%d"))
+          if( not isLocalFileNameUnique(local_filename)):
+            local_filename = "{0}_{1}.mp4".format(local_filename.split(".mp4")[0], str(uuid.uuid4()))
+            if( not isLocalFileNameUnique(local_filename)):      
+              print("Error: unabled to create a local file name for '{0}', check your output folder (pid={1})".format(color_title(display_title), item['pid']))
+              continue
+
+      # If the checklocal option is enabled then we don't want to try to download unless force is set
+      if( not args.force and args.checklocal and not isLocalFileNameUnique(local_filename) ):
+        # Store the id as already recorded and save to the file 
+        print("'{0}' found locally and marked as already recorded (pid={1})".format(color_title(display_title), item['pid']))
+        appendNewPidAndSavePreviouslyRecordedShows(item['pid'], previously_recorded, previously_recorded_file_name)
+        continue
+
+      #############################################
+      # We will rely on ffmpeg to do the playlist download and merging for us
+      # the tool is much better suited to this than manually merging as there
+      # are always some corruption issues in the merged stream if done in code
       
       # Get the correct playlist url
       playlist_data = find_m3u8_playlist_url(item, display_title, args.quality)
