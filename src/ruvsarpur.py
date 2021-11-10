@@ -480,6 +480,8 @@ def parseArguments():
 
   parser.add_argument("--originaltitle", help="Includes the original title of the show in the filename if it was found (this is usually the foreign title of the series or movie)", action="store_true")
 
+  parser.add_argument("--subtitles", help="Download subtitles if available, for all available languages", action="store_true")
+
   parser.add_argument("--ffmpeg",       help="Full path to the ffmpeg executable file", 
                                         type=str)
 
@@ -869,6 +871,7 @@ def runMain():
 
       try:
         ep_data = data['data']['Program']['episodes'][0] # First and only item
+        subtitles = ep_data['subtitles'] if 'subtitles' in ep_data else None
         item['vod_url'] = getGroup(RE_CAPTURE_VOD_URL, 'urlprefix', ep_data['file'])
         item['vod_dlcode'] = getGroup(RE_CAPTURE_VOD_URL, 'dlcode', ep_data['file'])
         #if item['vod_url'] is None or len(item['vod_url']) <= 2:
@@ -926,6 +929,11 @@ def runMain():
         print("Error: Could not download show playlist, not found on server. Try requesting a different video quality.")
         continue
 
+
+      # Download subtitles 
+      if (args.subtitles and subtitles is not None):
+        downloadSubtitles(subtitles, local_filename)
+        
       #print(playlist_data
       # Now ask FFMPEG to download and remux all the fragments for us
       result = download_m3u8_playlist_using_ffmpeg(ffmpegexec, playlist_data['url'], playlist_data['fragments'], local_filename, display_title, args.keeppartial, args.quality)
@@ -936,6 +944,19 @@ def runMain():
   finally:
     deinit() #Deinitialize the colorama library
     
+
+def downloadSubtitles(subtitles, video_filename):
+  for subtitle in subtitles:
+    subtitleFilename = "{0}.{1}.webvtt".format(
+        video_filename.split(".mp4")[0], subtitle['name'])
+    r = requests.get(
+      url=subtitle['value'],
+      headers={'content-type': 'application/json', 'Referer' : 'https://www.ruv.is/sjonvarp', 'Origin': 'https://www.ruv.is' })
+    data = r.content.decode()
+    
+    with open(subtitleFilename, 'w', encoding='utf-8') as out_file:
+      out_file.write(data)
+
 
 # If the script file is called by itself then execute the main function
 if __name__ == '__main__':
