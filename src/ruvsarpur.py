@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 # coding=utf-8
-__version__ = "7.0.2"
+__version__ = "8.0.0"
 # When modifying remember to issue a new tag command in git before committing, then push the new tag
-#   git tag -a v6.0.0 -m "v6.0.0"
+#   git tag -a v8.0.0 -m "v8.0.0"
 #   git push origin master --tags
 """
 Python script that allows you to download TV shows off the Icelandic RÚV Sarpurinn website.
@@ -80,22 +80,32 @@ TV_SCHEDULE_LOG_FILE = 'tvschedule.json'
 
 # The available bitrate streams
 QUALITY_BITRATE = {
-    "Very Low": { 'code': "500kbps", 'chunk_size' : 750000},
-    "Low"     : { 'code': "800kbps", 'chunk_size' :1000000},
-    "Normal"  : { 'code': "1200kbps", 'chunk_size':1500000},
-    "HD720"   : { 'code': "2400kbps", 'chunk_size':2800000},
-    "HD1080"  : { 'code': "3600kbps", 'chunk_size':4000000}
+    "Very Low": { 'code': "500", 'bits': "450000", 'chunk_size' : 750000},
+    "Low"     : { 'code': "800", 'bits': "750000", 'chunk_size' :1000000},
+    "Normal"  : { 'code': "1200", 'bits': "1150000", 'chunk_size':1500000},
+    "HD720"   : { 'code': "2400", 'bits': "2350000", 'chunk_size':2800000},
+    "HD1080"  : { 'code': "3600", 'bits': "3550000", 'chunk_size':4000000}
 }
 
-RUV_URL = 'ruv-vod-app-dcp-v4.secure.footprint.net'
+# Parse the formats
+#   https://ruv-vod.akamaized.net/opid/5234383T0/3600/index.m3u8
+#   https://ruv-vod.akamaized.net/lokad/5240696T0/3600/index.m3u8
+RE_VOD_URL_PARTS = re.compile(r'(?P<urlprefix>.*)(?P<rest>\/\d{3,4}\/index\.m3u8)', re.IGNORECASE)
+
+# Parse just the base url from 
+#   https://ruv-vod.akamaized.net/lokad/5240696T0/5240696T0.m3u8
+# resulting in vodbase being = https://ruv-vod.akamaized.net/lokad/5240696T0
+RE_VOD_BASE_URL = re.compile(r'(?P<vodbase>.*)\/(?P<rest>.*\.m3u8)', re.IGNORECASE)
+
+RUV_URL = 'https://ruv-vod.akamaized.net'
 
 # The url patterns that will be executed to try to discover the material
 # Example: http://sip-ruv-vod.dcp.adaptive.level3.net/lokad/2018/02/19/500kbps/4942522T0.mp4.m3u8
 # New format in August 2019:
 #    https://ruv-vod-app-dcp-v4.secure.footprint.net/opid/manifest.m3u8?tlm=hls&streams=2019/08/17/2400kbps/5028451T0.mp4.m3u8:2400,2019/08/17/500kbps/5028451T0.mp4.m3u8:500,2019/08/17/800kbps/5028451T0.mp4.m3u8:800,2019/08/17/1200kbps/5028451T0.mp4.m3u8:1200,2019/08/17/3600kbps/5028451T0.mp4.m3u8:3600
 PLAYLIST_URLS = [
-  'https://'+RUV_URL+'/opid/manifest.m3u8?tlm=hls&streams={0}/{1}/{2}/{3}/{4}{5}{6}.mp4.m3u8',
-  'https://'+RUV_URL+'/lokad/manifest.m3u8?tlm=hls&streams={0}/{1}/{2}/{3}/{4}{5}{6}.mp4.m3u8',
+  RUV_URL+'/opid/manifest.m3u8?tlm=hls&streams={0}/{1}/{2}/{3}/{4}{5}{6}.mp4.m3u8',
+  RUV_URL+'/lokad/manifest.m3u8?tlm=hls&streams={0}/{1}/{2}/{3}/{4}{5}{6}.mp4.m3u8',
 ]
 # Will use the parameter in following order
 # url.format(shown_year, shown_month, shown_day, QUALITY_BITRATE[video_quality]['code'], pid, letter, num)
@@ -195,64 +205,65 @@ def __create_retry_session(retries=5):
 
 # Attempts to discover the correct playlist file
 def find_m3u8_playlist_url(item, display_title, video_quality):
+  
+  # use default headers
+  headers = {'User-Agent':'Mozilla/5.0 (Windows NT 6.1; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/63.0.3239.132 Safari/537.36'}
+
+  # Store the program id
   pid = item['pid']
-  shown_year = item['showtime'][:4]
-  shown_month = item['showtime'][5:7]
-  shown_day = item['showtime'][8:10]
-  for url in PLAYLIST_URLS:
-    for num in range(30):
-      for letter in ['T','S','R','M','K','A']: #,'A','B','C','D','E','F','G','H','I','J','L','N','O','P','Q','U','V','W','X','Y','Z']:
-        url_formatted = url.format(shown_year, shown_month, shown_day, QUALITY_BITRATE[video_quality]['code'], pid, letter, num)
-        if 'vod_url' in item: 
-          if 'vod_alt' in item: # If this is an alternative download url then don't inject the QUALITY bitrate (as it is not supported)
-            url_formatted = '{0}{1}.mp4.m3u8'.format(item['vod_url'], item['vod_dlcode'])
-          else:
-            url_formatted = '{0}{1}/{2}.mp4.m3u8'.format(item['vod_url'], QUALITY_BITRATE[video_quality]['code'], item['vod_dlcode'])
-        
-        #print(url_formatted)
-        url_path = '/'.join(url_formatted.split('/manifest')[:-1])
-        try:
-          # Add default headers
-          headers = {'User-Agent':'Mozilla/5.0 (Windows NT 6.1; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/63.0.3239.132 Safari/537.36'}
-          
-          # Perform the get
-          request = __create_retry_session().get(url_formatted, stream=False, timeout=5, verify=False, headers=headers)
 
-          # If there wasn't a success then continue with the next url attempt
-          if request is None or not request.status_code == 200 or len(request.text) <= 0:
-            continue
+  # June 2022 : New alternate simpler VOD url format
+  #    https://ruv-vod.akamaized.net/lokad/5237328T0/3600/index.m3u8
 
-          # In August 2019 they changed the system to have an indirect file first that contains some additional urls
-          # detect if we're dealing with that kind of file because then it will actually point us to the actual m3u8 file to 
-          # download and parse like normal
-          
-          fragments = ['{0}/{1}'.format(url_path, line.strip()) for line in request.text.splitlines() if len(line) > 1 and line[0] != '#']
+  if not 'vod_url' in item or not 'vod_url_full' in item:
+    print( "{0} is not available through VOD (pid={1})".format(color_title(display_title), pid))
+    return None
 
-          # If fragments is length 1 and the only fragment in there contains the text ".m3u8?tlm=hls&streams" then we do the download again and reparse
-          if len(fragments) == 1 and fragments[0].find('.m3u8?tlm=hls&streams') > 0:
-            # Perform the get
-            request = __create_retry_session().get(fragments[0], stream=False, timeout=5, verify=False, headers=headers)
+  # Plan
+  # 1. Download the file from the vod_url_full and check it's contents
+  #    the contents actually tell us if we are dealing with the old stream format which has multiple lines containing the different streams, 
+  #    ex. 
+  #       #EXT-X-STREAM-INF:CLOSED-CAPTIONS=NONE,BANDWIDTH=530000,RESOLUTION=426x240,CODECS="mp4a.40.2,avc1.640015",AUDIO="audio-aacl-50"
+  #       asset-audio=50000-video=450000.m3u8?tlm=hls&streams=2022/02/06/2400kbps/5209577T0.mp4.m3u8:2400,2022/02/06/500kbps/5209577T0.mp4.m3u8:500,2022/02/06/800kbps/5209577T0.mp4.m3u8:800,2022/02/06/1200kbps/5209577T0.mp4.m3u8:1200,2022/02/06/3600kbps/5209577T0.mp4.m3u8:3600&AliasPass=ruv-vod-app-dcp-v4.secure.footprint.net
+  #
+  #    or if it is the new simpler format that only refers the index file
+  #    ex. 
+  #       #EXT-X-STREAM-INF:BANDWIDTH=4406504,CODECS="avc1.640028,mp4a.40.2",RESOLUTION=1920x1080,FRAME-RATE=25.000,AUDIO="2@48000-mp4a-0"
+  #       3600/index.m3u8
 
-            # If there wasn't a success then continue with the next url attempt
-            if request is None or not request.status_code == 200 or len(request.text) <= 0:
-              continue
+  url_first_file = item['vod_url_full']
 
-            # In August 2019 they changed the system to have an indirect file first that contains some additional urls
-            # detect if we're dealing with that kind of file because then it will actually point us to the actual m3u8 file to 
-            # download and parse like normal
-            fragments = ['{0}/{1}'.format(url_path, line.strip()) for line in request.text.splitlines() if len(line) > 1 and line[0] != '#']
+  try:
+    # Perform the first get
+    request = __create_retry_session().get(url_first_file, stream=False, timeout=5, verify=False, headers=headers)
+    if request is None or not request.status_code == 200 or len(request.text) <= 0:
+      print( "{0} not found on server (first file, pid={1}, url={2})".format(color_title(display_title), pid, url_first_file))
+      return None
 
-          # We found a playlist file, let's return the url and the fragments
-          return {'url': url_formatted, 'fragments':fragments}
+    # Assume the new format
+    url_formatted = '{0}/{1}/index.m3u8'.format(item['vod_url'], QUALITY_BITRATE[video_quality]['code']) 
 
-        except Exception as ex:
-          print( "Error while discovering playlist for {1} from '{0}'".format(url_formatted, color_title(display_title)))
-          print( ex )
-          traceback.print_stack()
-          return None
-    
-  print( "{0} not found on server (pid={1})".format(color_title(display_title), pid))
-  return None
+    # Check if this actually is the old format
+    if request.text.find('.m3u8?tlm=hls&streams') > 0:
+      url_formatted = '{0}/asset-audio=50000-video={1}.m3u8'.format(item['vod_url'], QUALITY_BITRATE[video_quality]['bits'])       
+
+    # Do the second request to get the actual stream data in the correct format
+    request = __create_retry_session().get(url_formatted, stream=False, timeout=5, verify=False, headers=headers)
+    if request is None or not request.status_code == 200 or len(request.text) <= 0:
+      print( "{0} not found on server (second file, pid={1}, url={2})".format(color_title(display_title), pid, url_formatted))
+      return None
+
+    # Count the number of fragments in the file, used to estimate download time
+    fragments = [line.strip() for line in request.text.splitlines() if len(line) > 1 and line[0] != '#']
+
+    # We found a playlist file, let's return the url and the fragments
+    return {'url': url_formatted, 'fragments':len(fragments)}
+
+  except Exception as ex:
+    print( "Error while discovering playlist for {1} from '{0}'".format(url_formatted, color_title(display_title)))
+    print( ex )
+    traceback.print_stack()
+    return None
 
 # FFMPEG download of the playlist
 def download_m3u8_playlist_using_ffmpeg(ffmpegexec, playlist_url, playlist_fragments, local_filename, display_title, keeppartial, video_quality):
@@ -290,7 +301,7 @@ def download_m3u8_playlist_using_ffmpeg(ffmpegexec, playlist_url, playlist_fragm
   my_env['PYTHONIOENCODING'] = 'utf-8'
 
   # Some counting for progress bars
-  total_chunks = len(playlist_fragments)
+  total_chunks = playlist_fragments
   completed_chunks = 0
   total_size = QUALITY_BITRATE[video_quality]['chunk_size'] * total_chunks
   total_size_mb = str(int(total_size/1024.0/1024.0))
@@ -308,7 +319,7 @@ def download_m3u8_playlist_using_ffmpeg(ffmpegexec, playlist_url, playlist_fragm
         if not line:
           break
         line = line.strip()
-        if ' Opening \'https://{0}'.format(RUV_URL) in line:
+        if ' Opening \'{0}'.format(RUV_URL) in line:
           completed_chunks += 1
           printProgress(min(completed_chunks, total_chunks), total_chunks, prefix = 'Downloading:', suffix = 'Working ', barLength = 25)
       except UnicodeDecodeError:
@@ -462,6 +473,8 @@ def parseArguments():
 
   parser.add_argument("--refresh", help="Refreshes the TV schedule data", action="store_true")
 
+  parser.add_argument("--plex", help="Creates Plex Media Server compatible file names and folder structures. See https://support.plex.tv/articles/naming-and-organizing-your-tv-show-files/", action="store_true")
+
   parser.add_argument("--force", help="Forces the program to re-download shows", action="store_true")
   
   parser.add_argument("--list", help="Only lists the items found but nothing is downloaded", action="store_true")
@@ -544,29 +557,56 @@ def getExistingTvSchedule(tv_file_name):
     return None
     
 def sanitizeFileName(local_filename, sep=" "):
-
   #These are symbols that are not "kosher" on a NTFS filesystem.
   local_filename = re.sub(r"[\"/:<>|?*\n\r\t\x00]", sep, local_filename)
   return local_filename
 
-def createShowTitle(show, include_original_title=False):
+def createShowTitle(show, include_original_title=False, use_plex_formatting=False):
   show_title = show['title']
-  if( include_original_title and 'original-title' in show and not show['original-title'] is None ):
-    show_title = "{0} - {1}".format(show['title'], show['original-title'])
+
+  # Always include original title if using plex formatting, but we only want the series title, without the (1 af xxx)
+  if( use_plex_formatting ):
+    
+    # If plex we always want to get out of the default title as the default includes the (1 af 2) suffix
+    show_title = show['series_title']
+
+    # Append the original if it is available (usually that contains more accurate season info than the icelandic title)
+    if( 'original-title' in show and not show['original-title'] is None ):
+      show_title = "{0} - {1}".format(show['series_title'], show['original-title'])
+  
+  # If not plex then adhere to the original title flag if set
+  elif( include_original_title and 'original-title' in show and not show['original-title'] is None ):
+    return "{0} - {1}".format(show['title'], show['original-title'])
     
   return show_title
 
-def createLocalFileName(show, include_original_title=False):
+def createLocalFileName(show, include_original_title=False, use_plex_formatting=False):
   # Create the show title
-  show_title = createShowTitle(show, include_original_title)
+  show_title = createShowTitle(show, include_original_title, use_plex_formatting)
 
-  # Create the local filename, if not multiple episodes then
-  # append the date and pid to the filename to avoid conflicts
-  if( 'ep_num' in show ):
-    local_filename = "{0}.mp4".format(show_title)
+  if( use_plex_formatting ):
+    original_title = ' ({0})'.format(show['original-title']) if 'original-title' in show and not show['original-title'] is None else ""
+    series_title = show['series_title']
+    # Plex formatting creates a local filename according to the rules defined here
+    # https://support.plex.tv/articles/naming-and-organizing-your-tv-show-files/
+    # Note: We do not santitize the 
+    # Examples:
+    #   \show_title\Season 01\series_title (original-title) - s01e01.mp4
+    # or 
+    #    \show_title\Season 01\series_title (original-title) - showtime [pid].mp4
+    if( 'ep_num' in show and 'ep_total' in show and int(show['ep_total']) > 1):
+      return "{0}/Season 01/{1}{2} - s01e{3}.mp4".format(sanitizeFileName(show_title), sanitizeFileName(series_title), sanitizeFileName(original_title), show['ep_num'].zfill(2))
+    else:
+      return "{0}/{1}{2} - {3} - [{4}].mp4".format(sanitizeFileName(show_title), sanitizeFileName(series_title), sanitizeFileName(original_title), sanitizeFileName(show['showtime'][:10]), sanitizeFileName(show['pid']))
+      
   else:
-    local_filename = "{0} - {1} ({2}).mp4".format(show_title, show['showtime'][:10], show['pid'])
-  
+    # Create the local filename, if not multiple episodes then
+    # append the date and pid to the filename to avoid conflicts
+    if( 'ep_num' in show ):
+      local_filename = "{0}.mp4".format(show_title)
+    else:
+      local_filename = "{0} - {1} ({2}).mp4".format(show_title, show['showtime'][:10], show['pid'])
+
   # Clean up any possible characters that would interfere with the local OS filename rules
   return sanitizeFileName(local_filename)
 
@@ -595,8 +635,6 @@ def findffmpeg(path_to_ffmpeg_install=None, working_dir=None):
   raise ValueError('Could not locate FFMPEG install, please use the --ffmpeg switch to specify the path to the ffmpeg executable on your system.')
 
 # Regex to extract the necessary VOD data from the files url
-RE_CAPTURE_VOD_URL = re.compile(r'(?P<urlprefix>.*tlm=hls&streams=20\d{2}\/\d{2}\/[0-3]\d\/)\d+kbps\/(?P<dlcode>\w+)\.mp4\.m3u8', re.IGNORECASE)
-RE_CAPTURE_VOD_URL_ALTERNATE = re.compile(r'(?P<urlprefix>.*tlm=hls&streams=(20\d{2}\/\d{2}\/[0-3]\d\/)?)(?P<dlcode>\w+)\.mp4\.m3u8', re.IGNORECASE)
 RE_CAPTURE_VOD_EPNUM_FROM_TITLE = re.compile(r'(?P<ep_num>\d+) af (?P<ep_total>\d+)', re.IGNORECASE)
 
 #
@@ -690,6 +728,8 @@ def getVodSeriesSchedule(sid, data):
   for episode in prog['episodes']:
     entry = {}
 
+    entry['episode'] = episode
+    entry['series_title'] = series_title
     entry['title'] = series_title
     entry['pid'] = str(episode['id'])
     entry['showtime'] = episode['firstrun']
@@ -840,7 +880,7 @@ def runMain():
     curr_item = 1
     for item in download_list:
       # Get a valid name for the save file
-      local_filename = createLocalFileName(item, args.originaltitle )
+      local_filename = createLocalFileName(item, args.originaltitle, args.plex)
       
       # Create the display title for the current episode (used in console output)
       display_title = "{0} of {1}: {2}".format(curr_item, total_items, createShowTitle(item, args.originaltitle)) 
@@ -850,10 +890,13 @@ def runMain():
       # pre-pend it to the file name then
       if( args.output is not None ):
         if not os.path.exists(args.output):
-          os.makedirs(args.output)
+          os.makedirs(args.output, exist_ok=True)
         # Now prepend the directory to the filename
         local_filename = os.path.join(args.output, local_filename)
 
+      # Check to see if the directory structure up to the final filename exists (in case the original local_filename included directories)
+      if not os.path.exists(local_filename):
+        Path(local_filename).parent.mkdir(parents=True, exist_ok=True)
 
       #############################################
       # First download the URL for the listing
@@ -869,21 +912,16 @@ def runMain():
 
       try:
         ep_data = data['data']['Program']['episodes'][0] # First and only item
-        item['vod_url'] = getGroup(RE_CAPTURE_VOD_URL, 'urlprefix', ep_data['file'])
-        item['vod_dlcode'] = getGroup(RE_CAPTURE_VOD_URL, 'dlcode', ep_data['file'])
-        #if item['vod_url'] is None or len(item['vod_url']) <= 2:
-        if item['vod_dlcode'] is None:
-          item['vod_url'] = getGroup(RE_CAPTURE_VOD_URL_ALTERNATE, 'urlprefix', ep_data['file'])
-          item['vod_dlcode'] = getGroup(RE_CAPTURE_VOD_URL_ALTERNATE, 'dlcode', ep_data['file'])
-          item['vod_alt'] = True
+        vod_url_full = ep_data['file']
+        item['vod_url_full'] = vod_url_full
 
         # If no VOD code can be found then this cannot be downloaded
-        if item['vod_dlcode'] is None:
-          print("Error: Could not locate VOD download code in VOD data, skipping "+item['title'])
+        if vod_url_full is None:
+          print("Error: Could not locate VOD download URL in VOD data, skipping "+item['title'])
           continue
 
-        # The vod-dlcode is the same as the pid from the old tv schedule, remove the last two characters and update
-        item['pid'] = item['vod_dlcode'][:-2]
+        # Get the base of the VOD url
+        item['vod_url'] = getGroup(RE_VOD_BASE_URL, 'vodbase', vod_url_full)
 
       except:
         print("Error: Could not retrieve episode download url due to parsing error in VOD data, skipping "+item['title'])
