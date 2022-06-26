@@ -99,17 +99,6 @@ RE_VOD_BASE_URL = re.compile(r'(?P<vodbase>.*)\/(?P<rest>.*\.m3u8)', re.IGNORECA
 
 RUV_URL = 'https://ruv-vod.akamaized.net'
 
-# The url patterns that will be executed to try to discover the material
-# Example: http://sip-ruv-vod.dcp.adaptive.level3.net/lokad/2018/02/19/500kbps/4942522T0.mp4.m3u8
-# New format in August 2019:
-#    https://ruv-vod-app-dcp-v4.secure.footprint.net/opid/manifest.m3u8?tlm=hls&streams=2019/08/17/2400kbps/5028451T0.mp4.m3u8:2400,2019/08/17/500kbps/5028451T0.mp4.m3u8:500,2019/08/17/800kbps/5028451T0.mp4.m3u8:800,2019/08/17/1200kbps/5028451T0.mp4.m3u8:1200,2019/08/17/3600kbps/5028451T0.mp4.m3u8:3600
-PLAYLIST_URLS = [
-  RUV_URL+'/opid/manifest.m3u8?tlm=hls&streams={0}/{1}/{2}/{3}/{4}{5}{6}.mp4.m3u8',
-  RUV_URL+'/lokad/manifest.m3u8?tlm=hls&streams={0}/{1}/{2}/{3}/{4}{5}{6}.mp4.m3u8',
-]
-# Will use the parameter in following order
-# url.format(shown_year, shown_month, shown_day, QUALITY_BITRATE[video_quality]['code'], pid, letter, num)
-
 # All the categories that will be downloaded by VOD, the first number determines the graphql query to use, 
 # the second value the category name to use in the query.
 vod_types_and_categories = [  # Note that this corresponds to the top level list of pages available (Sjonvarp, Utvarp, Krakkaruv, Ungruv)
