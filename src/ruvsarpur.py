@@ -660,7 +660,13 @@ def getVodSchedule(panelType, categoryName):
   total_programs = 0
   for panel in panels_iter_fields:
     total_programs += len(panel['programs'])
-    panels.append(panel)
+    # We first want to handle the category panels and then all the other ones
+    # This is because the category type panels will have more processing done on them and we don't
+    # want additional flags such as is_movie to be overwritten when the dictionaries are merged down below
+    if 'type' in panel and 'category' in panel['type'] :
+      panels.insert(0,panel) # Insert at front of list and shift
+    else:
+      panels.append(panel) # Append at end of list
 
   print("{0} | Total: {1} Series in {2}".format(color_title('Downloading VOD schedule'), total_programs, categoryName))
   printProgress(completed_programs, total_programs, prefix = 'Reading:', suffix = '', barLength = 25)
@@ -680,7 +686,11 @@ def getVodSchedule(panelType, categoryName):
 
       # Add all details for the given program to the schedule
       try:
-        schedule.update(getVodSeriesSchedule(program['id'], program, isMovie))
+        # We want to not override existing items in the schedule dictionary in case they are downloaded again
+        program_schedule = getVodSeriesSchedule(program['id'], program, isMovie)
+        # This joining of the two dictionaries below is necessary to ensure that 
+        # the existing items are not overwritten, therefore schedule is appended to the new list, existing items overwriting any new items.
+        schedule = dict(list(program_schedule.items()) + list(schedule.items())) 
       except Exception as ex:
           print( "Unable to retrieve schedule for VOD program '{0}', no episodes will be available for download from this program.".format(program['title']))
           continue
@@ -751,6 +761,9 @@ def getVodSeriesSchedule(sid, data, isMovies):
     entry['cat'] = "VOD"
 
     entry['is_movie'] = isMovies
+    # If not movie then do a small trick to see if this flag is incorrect by checking the description text
+    if not isMovies and 'kvikmynd ' in entry['desc']:
+      entry['is_movie'] = True
 
     entry['ep_num'] = str(episode['number']) if 'number' in episode else getGroup(RE_CAPTURE_VOD_EPNUM_FROM_TITLE, 'ep_num', episode['title'])
     if not entry['ep_num'] is None:
