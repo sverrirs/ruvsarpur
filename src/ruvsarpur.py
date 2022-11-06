@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 # coding=utf-8
-__version__ = "8.0.0"
+__version__ = "8.1.0"
 # When modifying remember to issue a new tag command in git before committing, then push the new tag
-#   git tag -a v8.0.0 -m "v8.0.0"
+#   git tag -a v8.1.0 -m "v8.1.0"
 #   git push origin master --tags
 """
 Python script that allows you to download TV shows off the Icelandic RÚV Sarpurinn website.
@@ -576,14 +576,27 @@ def createLocalFileName(show, include_original_title=False, use_plex_formatting=
   if( use_plex_formatting ):
     original_title = ' ({0})'.format(show['original-title']) if 'original-title' in show and not show['original-title'] is None else ""
     series_title = show['series_title']
-    # Plex formatting creates a local filename according to the rules defined here
-    # https://support.plex.tv/articles/naming-and-organizing-your-tv-show-files/
-    # Note: We do not santitize the 
-    # Examples:
-    #   \show_title\Season 01\series_title (original-title) - s01e01.mp4
-    # or 
-    #    \show_title\Season 01\series_title (original-title) - showtime [pid].mp4
-    if( 'ep_num' in show and 'ep_total' in show and int(show['ep_total']) > 1):
+    
+    if 'is_movie' in show and show['is_movie'] is True: 
+      # Dealing with a movie for sure, it may be episodic and therefore should use the "partX" notation
+      # described here: https://support.plex.tv/articles/naming-and-organizing-your-movie-media-files/#toc-3
+      # Examples:
+      #   \show_title\series_title (original-title) - part1.mp4
+      #   \show_title\series_title (original-title) - part2.mp4
+      if( 'ep_num' in show and 'ep_total' in show and int(show['ep_total']) > 1):
+        return "{0}/{1}{2} - part{3}.mp4".format(sanitizeFileName(show_title), sanitizeFileName(series_title), sanitizeFileName(original_title), show['ep_num'].zfill(2))
+      else:
+        # Just normal single file movie
+        return "{0}/{1}{2}.mp4".format(sanitizeFileName(show_title), sanitizeFileName(series_title), sanitizeFileName(original_title))
+    elif( 'ep_num' in show and 'ep_total' in show and int(show['ep_total']) > 1):
+      # This is an episode 
+      # Plex formatting creates a local filename according to the rules defined here
+      # https://support.plex.tv/articles/naming-and-organizing-your-tv-show-files/
+      # Note: We do not santitize the 
+      # Examples:
+      #   \show_title\Season 01\series_title (original-title) - s01e01.mp4
+      # or 
+      #    \show_title\Season 01\series_title (original-title) - showtime [pid].mp4
       return "{0}/Season 01/{1}{2} - s01e{3}.mp4".format(sanitizeFileName(show_title), sanitizeFileName(series_title), sanitizeFileName(original_title), show['ep_num'].zfill(2))
     else:
       return "{0}/{1}{2} - {3} - [{4}].mp4".format(sanitizeFileName(show_title), sanitizeFileName(series_title), sanitizeFileName(original_title), sanitizeFileName(show['showtime'][:10]), sanitizeFileName(show['pid']))
@@ -655,6 +668,11 @@ def getVodSchedule(panelType, categoryName):
   # Now iterate first through every group and for every thing in the group request all episodes for that 
   # item (there is no programmatic way of distinguishing between how many episodes there are)
   for panel in panels:
+
+    # Is the program a movie or an episode? Movies can also have multiple episodes (i.e. multi-part movies)
+    # HEIMILDARMYNDIR, KVIKMYNDIR, ÁTT ÞÚ EFTIR AÐ SJÁ ÞESSAR?
+    isMovie =  True if 'kvikmyndir' in panel['slug'] or 'att-thu-eftir-ad-sja-thessar' in panel['slug'] or 'heimildarmyndir' in panel['slug'] else False
+
     for program in panel['programs']:
       completed_programs += 1
       if program is None or not 'id' in program:
@@ -662,7 +680,7 @@ def getVodSchedule(panelType, categoryName):
 
       # Add all details for the given program to the schedule
       try:
-        schedule.update(getVodSeriesSchedule(program['id'], program))
+        schedule.update(getVodSeriesSchedule(program['id'], program, isMovie))
       except Exception as ex:
           print( "Unable to retrieve schedule for VOD program '{0}', no episodes will be available for download from this program.".format(program['title']))
           continue
@@ -696,7 +714,8 @@ def requestsVodDataRetrieveWithRetries(graphdata):
 #
 # Given a series id and program data, downloads all 
 # episodes available for that series
-def getVodSeriesSchedule(sid, data):
+# isMovies parameter indicates if the programs belong to the list of known movie categories and should be treated as such
+def getVodSeriesSchedule(sid, data, isMovies):
   
   graphdata = '?operationName=getEpisode&variables={"programID":'+str(sid)+'}&extensions={"persistedQuery":{"version":1,"sha256Hash":"f3f957a3a577be001eccf93a76cf2ae1b6d10c95e67305c56e4273279115bb93"}}'
   data = requestsVodDataRetrieveWithRetries(graphdata)
@@ -718,6 +737,7 @@ def getVodSeriesSchedule(sid, data):
     entry = {}
 
     entry['episode'] = episode
+    entry['episode_title'] = episode['title']
     entry['series_title'] = series_title
     entry['title'] = series_title
     entry['pid'] = str(episode['id'])
@@ -725,10 +745,12 @@ def getVodSeriesSchedule(sid, data):
     entry['duration'] = str(episode['duration']) if 'duration' in episode else ''
     entry['sid'] = str(sid)
     entry['desc'] = episode['description'] if 'duration' in episode and len(episode['description']) > 10 else prog['short_description']
-    entry['original-title'] = prog['foreign_title']
+    entry['original-title'] = foreign_title
 
     entry['catid'] = "0"
     entry['cat'] = "VOD"
+
+    entry['is_movie'] = isMovies
 
     entry['ep_num'] = str(episode['number']) if 'number' in episode else getGroup(RE_CAPTURE_VOD_EPNUM_FROM_TITLE, 'ep_num', episode['title'])
     if not entry['ep_num'] is None:
