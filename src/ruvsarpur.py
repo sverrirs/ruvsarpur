@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 # coding=utf-8
-__version__ = "9.0.0"
+__version__ = "9.1.0"
 # When modifying remember to issue a new tag command in git before committing, then push the new tag
-#   git tag -a v9.0.0 -m "v9.0.0"
+#   git tag -a v9.1.0 -m "v9.1.0"
 #   git push origin master --tags
 """
 Python script that allows you to download TV shows off the Icelandic RÚV Sarpurinn website.
@@ -284,25 +284,26 @@ def download_m3u8_playlist_using_ffmpeg(ffmpegexec, playlist_url, playlist_fragm
   # Create the metadata for the output file (note: This must appear after the input source, above, is defined)
   # see https://kdenlive.org/en/project/adding-meta-data-to-mp4-video/ and https://kodi.wiki/view/Video_file_tagging
   if not disable_metadata:
+    ep_description = videoInfo['desc'] if videoInfo['is_movie'] and len(videoInfo['desc']) > 1 else videoInfo['episode']['description'] if 'description' in videoInfo['episode'] and len(videoInfo['episode']['description']) > 1 else ''
     prog_args.append("-metadata")
-    prog_args.append("{0}=\"{1}\"".format('title', sanitizeFileName(videoInfo['title'] if videoInfo['is_movie'] else videoInfo['episode_title']) )) #The title of this video. (String)	
+    prog_args.append("{0}={1}".format('title', sanitizeFileName(videoInfo['title'] if videoInfo['is_movie'] else videoInfo['episode_title']) )) #The title of this video. (String)	
     prog_args.append("-metadata")
-    prog_args.append("{0}=\"{1}\"".format('comment', sanitizeFileName(videoInfo['desc']) ))  #A (content) description of this video.
+    prog_args.append("{0}={1}".format('comment', sanitizeFileName(videoInfo['desc']) ))  #A (content) description of this video.
     prog_args.append("-metadata")
-    prog_args.append("{0}=\"{1}\"".format('synopsis', sanitizeFileName(videoInfo['desc'] if videoInfo['is_movie'] else videoInfo['episode']['description']) ))  #A synopsis, a longer description of this video
+    prog_args.append("{0}={1}".format('synopsis', sanitizeFileName(ep_description) ))  #A synopsis, a longer description of this video
 
     if not videoInfo['is_movie']:
       prog_args.append("-metadata")
-      prog_args.append("{0}=\"{1}\"".format('show', sanitizeFileName(videoInfo['series_title']) )) #The name of the TV show,
+      prog_args.append("{0}={1}".format('show', sanitizeFileName(videoInfo['series_title']) )) #The name of the TV show,
       prog_args.append("-metadata")
-      prog_args.append("{0}=\"{1}\"".format('episode_id', videoInfo['ep_num']))  #Either the episode name or episode number, for display.
+      prog_args.append("{0}={1}".format('episode_id', videoInfo['ep_num']))  #Either the episode name or episode number, for display.
       prog_args.append("-metadata")
-      prog_args.append("{0}=\"{1}\"".format('episode_sort', videoInfo['ep_num']))  #This element is for sorting only, but never displayed. It allows numerical sorting of episode names that are strings, but not (necessarily) numbers. The valid range is limited to 0 to 255 only,
-      #prog_args.append("-metadata")
-      #prog_args.append("{0}=\"{1}\"".format('season_number', videoInfo['season_num']))  #The season number, in the range of 0 to 255 only === Don't have this yet!!!
+      prog_args.append("{0}={1}".format('episode_sort', int(videoInfo['ep_num'])))  #This element is for sorting only, but never displayed. It allows numerical sorting of episode names that are strings, but not (necessarily) numbers. The valid range is limited to 0 to 255 only,
+      prog_args.append("-metadata")
+      prog_args.append("{0}={1}".format('season_number', int(videoInfo['season_num'])))  #The season number, in the range of 0 to 255 only
 
     prog_args.append("-metadata")
-    prog_args.append("{0}=\"{1}\"".format('media_type', "Movie" if videoInfo['is_movie'] else "TV Show"))  #The genre this video belongs to. (String)	
+    prog_args.append("{0}={1}".format('media_type', "Movie" if videoInfo['is_movie'] else "TV Show"))  #The genre this video belongs to. (String)	
 
   # Finally the output file path
   prog_args.append(local_filename)
@@ -575,6 +576,15 @@ def sanitizeFileName(local_filename, sep=" "):
   local_filename = re.sub(r"[\"/:<>|?*\n\r\t\x00]", sep, local_filename)
   return local_filename
 
+# Removes a substring from end of string, see https://stackoverflow.com/a/3663505/779521
+def rchop(s, suffix):
+  if not type(suffix) is list:
+    suffix = [suffix]
+  for suff in suffix:
+    if suffix and s.endswith(suff):
+        return s[:-len(suff)]
+  return s
+
 def createShowTitle(show, include_original_title=False, use_plex_formatting=False):
   show_title = show['title']
 
@@ -586,7 +596,7 @@ def createShowTitle(show, include_original_title=False, use_plex_formatting=Fals
 
     # Append the original if it is available (usually that contains more accurate season info than the icelandic title)
     if( 'original-title' in show and not show['original-title'] is None ):
-      show_title = "{0} - {1}".format(show['series_title'], show['original-title'])
+      show_title = "{0} - {1}".format(show['series_title'], rchop(show['original-title'], [' I', ' II', ' III', ' IV', ' V', ' VI', ' VII', ' VIII', ' IX']))
   
   # If not plex then adhere to the original title flag if set
   elif( include_original_title and 'original-title' in show and not show['original-title'] is None ):
@@ -609,7 +619,7 @@ def createLocalFileName(show, include_original_title=False, use_plex_formatting=
       #   \show_title\series_title (original-title) - part1.mp4
       #   \show_title\series_title (original-title) - part2.mp4
       if( 'ep_num' in show and 'ep_total' in show and int(show['ep_total']) > 1):
-        return "{0}/{1}{2} - part{3}.mp4".format(sanitizeFileName(show_title), sanitizeFileName(series_title), sanitizeFileName(original_title), show['ep_num'].zfill(2))
+        return "{0}/{1}{2} - part{3}.mp4".format(sanitizeFileName(show_title), sanitizeFileName(series_title), sanitizeFileName(original_title), str(show['ep_num']).zfill(2))
       else:
         # Just normal single file movie
         return "{0}/{1}{2}.mp4".format(sanitizeFileName(show_title), sanitizeFileName(series_title), sanitizeFileName(original_title))
@@ -622,7 +632,7 @@ def createLocalFileName(show, include_original_title=False, use_plex_formatting=
       #   \show_title\Season 01\series_title (original-title) - s01e01.mp4
       # or 
       #    \show_title\Season 01\series_title (original-title) - showtime [pid].mp4
-      return "{0}/Season 01/{1}{2} - s01e{3}.mp4".format(sanitizeFileName(show_title), sanitizeFileName(series_title), sanitizeFileName(original_title), show['ep_num'].zfill(2))
+      return "{0}/Season {4}/{1}{2} - s{4}e{3}.mp4".format(sanitizeFileName(show_title), sanitizeFileName(series_title), sanitizeFileName(original_title), str(show['ep_num']).zfill(2), str(show['season_num'] if 'season_num' in show else 1).zfill(2))
     else:
       return "{0}/{1}{2} - {3} - [{4}].mp4".format(sanitizeFileName(show_title), sanitizeFileName(series_title), sanitizeFileName(original_title), sanitizeFileName(show['showtime'][:10]), sanitizeFileName(show['pid']))
       
@@ -801,6 +811,25 @@ def getVodSeriesSchedule(sid, data, isMovies):
       entry['ep_total'] = str(entry['ep_total'])
     else: 
       entry['ep_total'] = str(len(prog['episodes']))
+
+    # Attempt to parse out the season number, start with 1 as the default
+    entry['season_num'] = '1'
+    if str(series_title).endswith(' II') or str(foreign_title).endswith(' II') or 'önnur þáttaröð' in str(entry['desc']).lower():
+      entry['season_num'] = '2'
+    elif str(series_title).endswith(' III') or str(foreign_title).endswith(' III') or 'þriðja þáttaröð' in str(entry['desc']).lower():
+      entry['season_num'] = '3'
+    elif str(series_title).endswith(' IV') or str(foreign_title).endswith(' IV') or 'fjórða þáttaröð' in str(entry['desc']).lower():
+      entry['season_num'] = '4'
+    elif str(series_title).endswith(' V') or str(foreign_title).endswith(' V') or 'fimmta þáttaröð' in str(entry['desc']).lower():
+      entry['season_num'] = '5'
+    elif str(series_title).endswith(' VI') or str(foreign_title).endswith(' VI') or 'sjötta þáttaröð' in str(entry['desc']).lower():
+      entry['season_num'] = '6'
+    elif str(series_title).endswith(' VII') or str(foreign_title).endswith(' VII') or 'sjöunda þáttaröð' in str(entry['desc']).lower():
+      entry['season_num'] = '7'
+    elif str(series_title).endswith(' VIII') or str(foreign_title).endswith(' VIII') or 'áttunda þáttaröð' in str(entry['desc']).lower():
+      entry['season_num'] = '8'
+    elif str(series_title).endswith(' IX') or str(foreign_title).endswith(' IX') or 'níunda þáttaröð' in str(entry['desc']).lower():
+      entry['season_num'] = '9'
 
     # Create the episode numbers programatically to ensure consistency if we're dealing with multi-episode program
     if not entry['ep_total'] is None and int(entry['ep_total']) > 1:
