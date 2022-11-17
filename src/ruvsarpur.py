@@ -138,7 +138,7 @@ def printProgress (iteration, total, prefix = '', suffix = '', decimals = 1, bar
 # Downloads all available subtitle files
 def downloadSubtitlesFiles(subtitles, local_video_filename, video_display_title, video_item):
   for subtitle in subtitles:
-    
+
     # See naming guidelines https://support.plex.tv/articles/200471133-adding-local-subtitles-to-your-media/
     subtitle_name = "{0}.{1}".format( Path(local_video_filename).stem, subtitle['name'])
     subtitle_filename = "{0}.{1}.vtt".format( local_video_filename.split(".mp4")[0], subtitle['name'])
@@ -332,7 +332,7 @@ def download_m3u8_playlist_using_ffmpeg(ffmpegexec, playlist_url, playlist_fragm
   printProgress(completed_chunks, total_chunks, prefix = 'Downloading:', suffix = 'Starting', barLength = 25)
 
   # Run the app and collect the output
-  print(prog_args)
+  # print(prog_args)
   ret = subprocess.Popen(prog_args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True, env=my_env)
   try:
     while True:
