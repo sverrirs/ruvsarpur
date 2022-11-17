@@ -140,7 +140,7 @@ def printProgress (iteration, total, prefix = '', suffix = '', decimals = 1, bar
 def download_file(url, local_filename, display_title, keeppartial = False ):
   try:
     # NOTE the stream=True parameter
-    r = requests.get(url, stream=True)
+    r = __create_retry_session().get(url, stream=True)
     
     # If the status is not success then terminate
     if( r.status_code != 200 ):
@@ -355,102 +355,6 @@ def download_m3u8_playlist_using_ffmpeg(ffmpegexec, playlist_url, playlist_fragm
   if ret.returncode == 0:
     return local_filename
   return None
-  
-def download_xml(url):
-    r = requests.get(url)
-    # If the status is not success then terminate
-    if( r.status_code != 200 ):
-      return None
-          
-    # https://docs.python.org/2/library/xml.etree.elementtree.html
-    tree = ElementTree.fromstring(r.content)
-        
-    return tree
-    
-def getShowDetailsText(entry_xml):
-  
-  # Get the most basic show details text
-  details_basic = entry_xml.find('description')
-  details_orgtitle_el = entry_xml.find('original-title')
-  
-  if( not details_basic is None):
-    return details_basic.text
-  elif( not details_orgtitle_el is None):
-    return details_orgtitle_el.text
-    
-  # Nothing was found
-  return None
-    
-def getShowTimes(days_back = 0):
-  today = datetime.date.today()
-  if( days_back <= 0 ):
-    # Default is getting all of last month, so subtract a whole month from the today date
-    from_date = today - dateutil.relativedelta.relativedelta(months=1)
-  else:
-    from_date = today - dateutil.relativedelta.relativedelta(days=days_back)
-  
-  # Construct the URL for the last month and download the TV schedule
-  #http://muninn.ruv.is/files/xml/ruv/2017-06-15/2017-07-09/
-  #url = "http://muninn.ruv.is/files/xml/ruv/{0}/{1}/$download".format(from_date.strftime('%Y-%m-%d'), today.strftime('%Y-%m-%d'))
-  url = "http://muninn.ruv.is/files/xml/ruv/{0}/{1}/".format(from_date.strftime('%Y-%m-%d'), today.strftime('%Y-%m-%d'))
-    
-  schedule = {}
-  print("{0} | Since: {1}".format(color_title('Downloading TV schedule'), from_date.strftime('%Y-%m-%d')))
-  schedule_xml = download_xml(url)
-  if( schedule_xml is None):
-    print("Could not download TV schedule, exiting")
-    sys.exit(-1)
-  
-  # Iterate over every day in the tv schedule and collect the shows being shown
-  # index this in a keyed dictionary
-  
-  for child in schedule_xml:
-    if( not child.tag == "service" ):
-      continue
-    
-    for entry_xml in child.iter('event'):
-      entry = {}
-      
-      entry['title'] = entry_xml.find('title').text
-      entry['pid'] = entry_xml.get('event-id')
-      entry['showtime'] = entry_xml.get('start-time')
-      entry['duration'] = entry_xml.get('duration')
-      entry['sid'] = entry_xml.get('serie-id')
-      
-      # Get the show details text
-      entry_details = getShowDetailsText(entry_xml)
-      if( not entry_details is None ):
-        entry['desc'] = entry_details
-
-      # Get the original title of the show
-      entry_org_title = entry_xml.find('original-title')
-      if( not entry_org_title is None ):
-        entry['original-title'] = entry_org_title.text
-
-      # If the series id is nothing then it is not a show (e.g. dagskrárlok)
-      if( not entry['sid'] ):
-        continue
-      
-      cat = entry_xml.find('category')
-      if(  not cat is None  ):
-        entry['catid'] = cat.get('value')
-        entry['cat'] = cat.text
-      
-      ep = entry_xml.find('episode')
-      if( not ep is None ):
-        entry['ep_num'] = ep.get('number')
-        entry['ep_total'] = ep.get('number-of-episodes')
-        if( int(entry['ep_total']) > 1 ):
-          # Append the episode number to the show title if it is a real multi-episode show
-          entry['title'] += " ("+entry['ep_num']+" af "+entry['ep_total']+")"
-        #else:
-          # If it isn't a multi episode show then append the date to the title (to avoid overwriting files)
-          #entry['title'] += " ("+sanitizeFileName(entry['showtime'][:16], "") +")"
-              
-      # Save the entry into the main schedule
-      schedule[entry['pid']] = entry
-      
-  return schedule
   
 def printTvShowDetails(args, show):
   if( not 'pid' in show ):
@@ -712,7 +616,8 @@ def getVodSchedule(panelType, categoryName):
 
     # Is the program a movie or an episode? Movies can also have multiple episodes (i.e. multi-part movies)
     # HEIMILDARMYNDIR, KVIKMYNDIR, ÁTT ÞÚ EFTIR AÐ SJÁ ÞESSAR?
-    isMovie =  True if 'kvikmyndir' in panel['slug'] or 'att-thu-eftir-ad-sja-thessar' in panel['slug'] or 'heimildarmyndir' in panel['slug'] else False
+    #isMovie = True if 'kvikmyndir' in panel['slug'] or 'att-thu-eftir-ad-sja-thessar' in panel['slug'] or 'heimildarmyndir' in panel['slug'] else False
+    isMovie = True if 'kvikmyndir' in panel['slug'] or 'att-thu-eftir-ad-sja-thessar' in panel['slug'] else False
 
     for program in panel['programs']:
       completed_programs += 1
@@ -791,9 +696,6 @@ def getVodSeriesSchedule(sid, data, isMovies):
     entry['sid'] = str(sid)
     entry['desc'] = episode['description'] if 'duration' in episode and len(episode['description']) > 10 else prog['short_description']
     entry['original-title'] = foreign_title
-
-    entry['catid'] = "0"
-    entry['cat'] = "VOD"
 
     entry['is_movie'] = isMovies
     # If not movie then do a small trick to see if this flag is incorrect by checking the description text
