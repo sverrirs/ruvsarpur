@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 # coding=utf-8
-__version__ = "9.1.0"
+__version__ = "9.2.0"
 # When modifying remember to issue a new tag command in git before committing, then push the new tag
-#   git tag -a v9.1.0 -m "v9.1.0"
+#   git tag -a v9.2.0 -m "v9.2.0"
 #   git push origin master --tags
 """
 Python script that allows you to download TV shows off the Icelandic RÚV Sarpurinn website.
@@ -135,6 +135,15 @@ def printProgress (iteration, total, prefix = '', suffix = '', decimals = 1, bar
   except: 
     pass # Ignore all errors when printing progress
     
+# Downloads all available subtitle files
+def downloadSubtitlesFiles(subtitles, local_video_filename, video_display_title, video_item):
+  for subtitle in subtitles:
+    
+    # See naming guidelines https://support.plex.tv/articles/200471133-adding-local-subtitles-to-your-media/
+    subtitle_name = "{0}.{1}".format( Path(local_video_filename).stem, subtitle['name'])
+    subtitle_filename = "{0}.{1}.vtt".format( local_video_filename.split(".mp4")[0], subtitle['name'])
+    download_file(subtitle['value'], subtitle_filename, subtitle_name)
+
 # Downloads a file using Requests
 # From: http://stackoverflow.com/a/16696317
 def download_file(url, local_filename, display_title, keeppartial = False ):
@@ -896,6 +905,9 @@ def runMain():
         vod_url_full = ep_data['file']
         item['vod_url_full'] = vod_url_full
 
+        # Store any references to subtitle files if available
+        subtitles = ep_data['subtitles'] if 'subtitles' in ep_data else None
+
         # If no VOD code can be found then this cannot be downloaded
         if vod_url_full is None:
           print("Error: Could not locate VOD download URL in VOD data, skipping "+item['title'])
@@ -951,6 +963,14 @@ def runMain():
       if( not result is None ):
         # if everything was OK then save the pid as successfully downloaded
         appendNewPidAndSavePreviouslyRecordedShows(item['pid'], previously_recorded, previously_recorded_file_name) 
+
+        # Attempt to download any subtitles if available 
+        if not subtitles is None:
+          try:
+            downloadSubtitlesFiles(subtitles, local_filename, display_title, item)
+          except ex:
+            print("Error: Could not download subtitle files for item, "+item['title'])
+            continue
     
   finally:
     deinit() #Deinitialize the colorama library
