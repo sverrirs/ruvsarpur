@@ -140,9 +140,8 @@ def downloadSubtitlesFiles(subtitles, local_video_filename, video_display_title,
   for subtitle in subtitles:
 
     # See naming guidelines https://support.plex.tv/articles/200471133-adding-local-subtitles-to-your-media/
-    subtitle_name = "{0}.{1}".format( Path(local_video_filename).stem, subtitle['name'])
     subtitle_filename = "{0}.{1}.vtt".format( local_video_filename.split(".mp4")[0], subtitle['name'])
-    download_file(subtitle['value'], subtitle_filename, subtitle_name)
+    download_file(subtitle['value'], subtitle_filename, "{1}: Subtitles for: {0}".format(Path(local_video_filename).stem, subtitle['name']))
 
 # Downloads a file using Requests
 # From: http://stackoverflow.com/a/16696317
@@ -159,21 +158,23 @@ def download_file(url, local_filename, display_title, keeppartial = False ):
     total_size_mb = str(int(total_size/1024.0/1024.0))
     completed_size = 0
         
-    print("{0} | Total: {1} MB".format(color_title(display_title), total_size_mb))
-    printProgress(completed_size, total_size, prefix = 'Downloading:', suffix = 'Starting', barLength = 25)
+    #if( total_size > 1024):
+    #  print("{0} | Total: {1} MB".format(color_title(display_title), total_size_mb))
+    #  printProgress(completed_size, total_size, prefix = 'Downloading:', suffix = 'Starting', barLength = 25)
     
     with open(local_filename, 'wb') as f:
       for chunk in r.iter_content(chunk_size=1024): 
         if chunk: # filter out keep-alive new chunks
           f.write(chunk)
           completed_size += 1024
-          printProgress(completed_size, total_size, prefix = 'Downloading:', suffix = 'Working ', barLength = 25)
+    #      if( total_size > 1024):
+    #        printProgress(completed_size, total_size, prefix = 'Downloading:', suffix = 'Working ', barLength = 25)
     
     # Write a final completed line for the progress bar to signify that the operation is done
-    printProgress(completed_size, completed_size, prefix = 'Downloading:', suffix = 'Complete', barLength = 25, color = False)
+    #printProgress(completed_size, completed_size, prefix = 'Downloading:', suffix = 'Complete', barLength = 25, color = False)
     
     # Write one extra line break after operation finishes otherwise the subsequent prints will end up in the same line
-    sys.stdout.write('\n')
+    #sys.stdout.write('\n')
     return local_filename
   except:
     print(os.linesep) # Double new line as otherwise the error message is squished to the download progress
@@ -671,6 +672,19 @@ def requestsVodDataRetrieveWithRetries(graphdata):
     time.sleep(3)
 
 #
+# Replaces image size macro in cover art URLs with a high res version
+# example: 
+# From:
+#    https://d38kdhuogyllre.cloudfront.net/fit-in/$$IMAGESIZE$$x/filters:quality(65)/hd_posters/878lr8-89tmhg.jpg
+# To: 
+#    https://d38kdhuogyllre.cloudfront.net/fit-in/2048x/filters:quality(65)/hd_posters/878lr8-89tmhg.jpg
+def formatCoverArtResolutionMacro(rawsrc):
+  if rawsrc is None or len(rawsrc) < 1:
+    return None
+
+  return str(rawsrc).replace('$$IMAGESIZE$$','2048')
+
+#
 # Given a series id and program data, downloads all 
 # episodes available for that series
 # isMovies parameter indicates if the programs belong to the list of known movie categories and should be treated as such
@@ -689,15 +703,23 @@ def getVodSeriesSchedule(sid, data, isMovies):
   prog = data['data']['Program']
 
   series_title = prog['title']
+  series_description = prog['short_description']
+  series_shortdescription = prog['description']
+  series_image = formatCoverArtResolutionMacro(prog['image'])
   foreign_title = prog['foreign_title']
   total_episodes = len(prog['episodes'])
 
   for episode in prog['episodes']:
     entry = {}
 
+    entry['series_title'] = series_title
+    entry['series_desc'] = series_description
+    entry['series_sdesc'] = series_shortdescription
+    entry['series_image'] = series_image
+
     entry['episode'] = episode
     entry['episode_title'] = episode['title']
-    entry['series_title'] = series_title
+    entry['episode_image'] = formatCoverArtResolutionMacro(episode['image'])
     entry['title'] = series_title
     entry['pid'] = str(episode['id'])
     entry['showtime'] = episode['firstrun']
