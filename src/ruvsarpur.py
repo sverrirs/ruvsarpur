@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 # coding=utf-8
-__version__ = "9.2.0"
+__version__ = "9.3.0"
 # When modifying remember to issue a new tag command in git before committing, then push the new tag
-#   git tag -a v9.2.0 -m "v9.2.0"
+#   git tag -a v9.3.0 -m "v9.3.0"
 #   git push origin master --tags
 """
 Python script that allows you to download TV shows off the Icelandic RÚV Sarpurinn website.
@@ -134,6 +134,37 @@ def printProgress (iteration, total, prefix = '', suffix = '', decimals = 1, bar
     sys.stdout.flush()
   except: 
     pass # Ignore all errors when printing progress
+
+# Downloads the image poster for a movie
+# See naming guidelines: https://support.plex.tv/articles/200220677-local-media-assets-movies/#toc-2
+def downloadMoviePoster(local_filename, display_title, item):
+  poster_url = item['series_image'] if 'series_image' in item and len(item['series_image']) > 1 else item['episode_image'] if 'episode_image' in item and len(item['episode_image']) > 1 else None
+  if poster_url is None:
+    return
+
+  poster_dir = Path(local_filename).parent.absolute()
+  # Note RUV currently always has JPEGs
+  poster_filename = f"{poster_dir}/poster.jpg"
+
+  download_file(poster_url, poster_filename, f"Movie artwork for {item['title']}")
+  
+
+# Downloads the image and season posters for episodic content
+def downloadTVShowPoster(local_filename, display_title, item):
+  episode_poster_url = item['episode_image'] if 'episode_image' in item and len(item['episode_image']) > 1 else None
+  series_poster_url = item['series_image'] if 'series_image' in item and len(item['series_image']) > 1 else None
+
+  # Download the episode poster
+  if not episode_poster_url is None:
+    episode_poster_name = local_filename.split(".mp4")[0]
+    episode_poster_filename = f"{episode_poster_name}.jpg"
+    download_file(episode_poster_url, episode_poster_filename, f"Episode artwork for {item['title']}")
+
+  # Download the series poster  
+  if not series_poster_url is None: 
+    series_poster_dir = Path(local_filename).parent.absolute()
+    series_poster_filename = f"{series_poster_dir}/poster.jpg"
+    download_file(series_poster_url, series_poster_filename, f"Series artwork for {item['series_title']}")
     
 # Downloads all available subtitle files
 def downloadSubtitlesFiles(subtitles, local_video_filename, video_display_title, video_item):
@@ -294,7 +325,20 @@ def download_m3u8_playlist_using_ffmpeg(ffmpegexec, playlist_url, playlist_fragm
   # Create the metadata for the output file (note: This must appear after the input source, above, is defined)
   # see https://kdenlive.org/en/project/adding-meta-data-to-mp4-video/ and https://kodi.wiki/view/Video_file_tagging
   if not disable_metadata:
-    ep_description = videoInfo['desc'] if videoInfo['is_movie'] and len(videoInfo['desc']) > 1 else videoInfo['episode']['description'] if 'description' in videoInfo['episode'] and len(videoInfo['episode']['description']) > 1 else ''
+
+    # Determine the description for the file
+    ep_description = ''
+
+    # Description for movies, we want the longer version of
+    if videoInfo['is_movie']:
+      ep_description = videoInfo['desc']
+      if( len(videoInfo['series_sdesc']) > len(ep_description)):
+        ep_description = videoInfo['series_sdesc']
+    
+    # Description for epsiodic content (do not use the series description)
+    if len(ep_description) <= 0 and 'description' in videoInfo['episode'] and len(videoInfo['episode']['description']) > 1 :
+      ep_description = videoInfo['episode']['description']    
+
     prog_args.append("-metadata")
     prog_args.append("{0}={1}".format('title', sanitizeFileName(videoInfo['title'] if videoInfo['is_movie'] else videoInfo['episode_title']) )) #The title of this video. (String)	
     prog_args.append("-metadata")
@@ -688,7 +732,7 @@ def formatCoverArtResolutionMacro(rawsrc):
 # Given a series id and program data, downloads all 
 # episodes available for that series
 # isMovies parameter indicates if the programs belong to the list of known movie categories and should be treated as such
-def getVodSeriesSchedule(sid, data, isMovies):
+def getVodSeriesSchedule(sid, incoming_program, isMovies):
   
   graphdata = '?operationName=getEpisode&variables={"programID":'+str(sid)+'}&extensions={"persistedQuery":{"version":1,"sha256Hash":"f3f957a3a577be001eccf93a76cf2ae1b6d10c95e67305c56e4273279115bb93"}}'
   data = requestsVodDataRetrieveWithRetries(graphdata)
@@ -706,6 +750,7 @@ def getVodSeriesSchedule(sid, data, isMovies):
   series_description = prog['short_description']
   series_shortdescription = prog['description']
   series_image = formatCoverArtResolutionMacro(prog['image'])
+  portrait_image = formatCoverArtResolutionMacro(incoming_program['portrait_image']) if 'portrait_image' in incoming_program else None
   foreign_title = prog['foreign_title']
   total_episodes = len(prog['episodes'])
 
@@ -716,6 +761,7 @@ def getVodSeriesSchedule(sid, data, isMovies):
     entry['series_desc'] = series_description
     entry['series_sdesc'] = series_shortdescription
     entry['series_image'] = series_image
+    entry['portrait_image'] = portrait_image
 
     entry['episode'] = episode
     entry['episode_title'] = episode['title']
@@ -985,6 +1031,12 @@ def runMain():
       if( not result is None ):
         # if everything was OK then save the pid as successfully downloaded
         appendNewPidAndSavePreviouslyRecordedShows(item['pid'], previously_recorded, previously_recorded_file_name) 
+
+        # Attempt to download artworks if available
+        if( item['is_movie']):
+          downloadMoviePoster(local_filename, display_title, item)
+        else: 
+          downloadTVShowPoster(local_filename, display_title, item)
 
         # Attempt to download any subtitles if available 
         if not subtitles is None:
