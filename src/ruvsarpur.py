@@ -138,21 +138,21 @@ def printProgress (iteration, total, prefix = '', suffix = '', decimals = 1, bar
 # Downloads the image poster for a movie
 # See naming guidelines: https://support.plex.tv/articles/200220677-local-media-assets-movies/#toc-2
 def downloadMoviePoster(local_filename, display_title, item):
-  poster_url = item['portrait_image'] if 'portrait_image' in item and len(item['portrait_image']) > 1 else item['series_image'] if 'series_image' in item and len(item['series_image']) > 1 else None
+  poster_url = item['portrait_image'] if 'portrait_image' in item and not item['portrait_image'] is None else item['series_image'] if 'series_image' in item and not item['series_image'] is None else None
   if poster_url is None:
     return
 
   poster_dir = Path(local_filename).parent.absolute()
   # Note RUV currently always has JPEGs
-  poster_filename = f"{poster_dir}/poster.jpg"
+  poster_filename = f"{poster_dir}\\poster.jpg"
 
   download_file(poster_url, poster_filename, f"Movie artwork for {item['title']}")
   
 
 # Downloads the image and season posters for episodic content
 def downloadTVShowPoster(local_filename, display_title, item):
-  episode_poster_url = item['episode_image'] if 'episode_image' in item and len(item['episode_image']) > 1 else None
-  series_poster_url = item['portrait_image'] if 'portrait_image' in item and len(item['portrait_image']) > 1 else item['series_image'] if 'series_image' in item and len(item['series_image']) > 1 else None
+  episode_poster_url = item['episode_image'] if 'episode_image' in item and not item['episode_image'] is None else None
+  series_poster_url = item['portrait_image'] if 'portrait_image' in item and not item['portrait_image'] is None else item['series_image'] if 'series_image' in item and not item['series_image'] is None else None
 
   # Download the episode poster
   if not episode_poster_url is None:
@@ -163,7 +163,7 @@ def downloadTVShowPoster(local_filename, display_title, item):
   # Download the series poster  
   if not series_poster_url is None: 
     series_poster_dir = Path(local_filename).parent.parent.absolute() # Go up one directory (i.e. not in Season01 but in the main series folder)
-    series_poster_filename = f"{series_poster_dir}/poster.jpg"
+    series_poster_filename = f"{series_poster_dir}\\poster.jpg"
     # Do not override a poster that is already there
     if not Path(series_poster_filename).exists:
       download_file(series_poster_url, series_poster_filename, f"Series artwork for {item['series_title']}")
@@ -468,6 +468,8 @@ def parseArguments():
 
   parser.add_argument("--nometadata", help="Disables embedding mp4 metadata about the movie or the TV show, default is on. Only disable this if you are having problems with this feature.", action="store_true")
 
+  parser.add_argument("--novideo", help="Disables downloading of video content, restricts behavior to only downloading metadata, posters and subtitles.", action="store_true")
+
   parser.add_argument("--ffmpeg",       help="Full path to the ffmpeg executable file", 
                                         type=str)
 
@@ -534,7 +536,7 @@ def getExistingTvSchedule(tv_file_name):
 def sanitizeFileName(local_filename, sep=" "):
   #These are symbols that are not "kosher" on a NTFS filesystem.
   local_filename = re.sub(r"[\"/:<>|?*\n\r\t\x00]", sep, local_filename)
-  return local_filename
+  return local_filename.strip()
 
 # Removes a substring from end of string, see https://stackoverflow.com/a/3663505/779521
 def rchop(s, suffix):
@@ -569,7 +571,7 @@ def createLocalFileName(show, include_original_title=False, use_plex_formatting=
   show_title = createShowTitle(show, include_original_title, use_plex_formatting)
 
   if( use_plex_formatting ):
-    original_title = ' ({0})'.format(show['original-title']) if 'original-title' in show and not show['original-title'] is None else ""
+    original_title = ' ({0})'.format(sanitizeFileName(show['original-title'])) if 'original-title' in show and not show['original-title'] is None else ""
     series_title = show['series_title']
     
     if 'is_movie' in show and show['is_movie'] is True: 
@@ -579,10 +581,10 @@ def createLocalFileName(show, include_original_title=False, use_plex_formatting=
       #   \show_title\series_title (original-title) - part1.mp4
       #   \show_title\series_title (original-title) - part2.mp4
       if( 'ep_num' in show and 'ep_total' in show and int(show['ep_total']) > 1):
-        return "{0}/{1}{2} - part{3}.mp4".format(sanitizeFileName(show_title), sanitizeFileName(series_title), sanitizeFileName(original_title), str(show['ep_num']).zfill(2))
+        return "{0}\\{1}{2} - part{3}.mp4".format(sanitizeFileName(show_title), sanitizeFileName(series_title), original_title, str(show['ep_num']).zfill(2))
       else:
         # Just normal single file movie
-        return "{0}/{1}{2}.mp4".format(sanitizeFileName(show_title), sanitizeFileName(series_title), sanitizeFileName(original_title))
+        return "{0}\\{1}{2}.mp4".format(sanitizeFileName(show_title), sanitizeFileName(series_title), original_title)
     elif( 'ep_num' in show and 'ep_total' in show and int(show['ep_total']) > 1):
       # This is an episode 
       # Plex formatting creates a local filename according to the rules defined here
@@ -592,9 +594,9 @@ def createLocalFileName(show, include_original_title=False, use_plex_formatting=
       #   \show_title\Season 01\series_title (original-title) - s01e01.mp4
       # or 
       #    \show_title\Season 01\series_title (original-title) - showtime [pid].mp4
-      return "{0}/Season {4}/{1}{2} - s{4}e{3}.mp4".format(sanitizeFileName(show_title), sanitizeFileName(series_title), sanitizeFileName(original_title), str(show['ep_num']).zfill(2), str(show['season_num'] if 'season_num' in show else 1).zfill(2))
+      return "{0}\\Season {4}\\{1}{2} - s{4}e{3}.mp4".format(sanitizeFileName(show_title), sanitizeFileName(series_title), original_title, str(show['ep_num']).zfill(2), str(show['season_num'] if 'season_num' in show else 1).zfill(2))
     else:
-      return "{0}/{1}{2} - {3} - [{4}].mp4".format(sanitizeFileName(show_title), sanitizeFileName(series_title), sanitizeFileName(original_title), sanitizeFileName(show['showtime'][:10]), sanitizeFileName(show['pid']))
+      return "{0}\\{1}{2} - {3} - [{4}].mp4".format(sanitizeFileName(show_title), sanitizeFileName(series_title), original_title, sanitizeFileName(show['showtime'][:10]), sanitizeFileName(show['pid']))
       
   else:
     # Create the local filename, if not multiple episodes then
@@ -990,64 +992,68 @@ def runMain():
         print("Error: Could not retrieve episode download url due to parsing error in VOD data, skipping "+item['title'])
         continue
 
-      # If the file has already been registered as downloaded then don't attempt to re-download
-      if( not args.force and item['pid'] in previously_recorded ):
-        print("'{0}' already recorded (pid={1})".format(color_title(display_title), item['pid']))
-        continue
+      if not args.novideo:
+        # If the file has already been registered as downloaded then don't attempt to re-download
+        if( not args.force and item['pid'] in previously_recorded ):
+          print("'{0}' already recorded (pid={1})".format(color_title(display_title), item['pid']))
+          continue
 
-      # Before we attempt to download the file we should make sure we're not accidentally overwriting an existing file
-      if( not args.force and not args.checklocal):
-        # So, check for the existence of a file with the same name, if one is found then attempt to give
-        # our new file a different name and check again (append date and time), if still not unique then 
-        # create file name with guid, if still not unique then fail!
-        if( not isLocalFileNameUnique(local_filename) ):
-          # Check with date
-          local_filename = "{0}_{1}.mp4".format(local_filename.split(".mp4")[0], datetime.datetime.now().strftime("%Y-%m-%d"))
-          if( not isLocalFileNameUnique(local_filename)):
-            local_filename = "{0}_{1}.mp4".format(local_filename.split(".mp4")[0], str(uuid.uuid4()))
-            if( not isLocalFileNameUnique(local_filename)):      
-              print("Error: unabled to create a local file name for '{0}', check your output folder (pid={1})".format(color_title(display_title), item['pid']))
-              continue
+        # Before we attempt to download the file we should make sure we're not accidentally overwriting an existing file
+        if( not args.force and not args.checklocal):
+          # So, check for the existence of a file with the same name, if one is found then attempt to give
+          # our new file a different name and check again (append date and time), if still not unique then 
+          # create file name with guid, if still not unique then fail!
+          if( not isLocalFileNameUnique(local_filename) ):
+            # Check with date
+            local_filename = "{0}_{1}.mp4".format(local_filename.split(".mp4")[0], datetime.datetime.now().strftime("%Y-%m-%d"))
+            if( not isLocalFileNameUnique(local_filename)):
+              local_filename = "{0}_{1}.mp4".format(local_filename.split(".mp4")[0], str(uuid.uuid4()))
+              if( not isLocalFileNameUnique(local_filename)):      
+                print("Error: unabled to create a local file name for '{0}', check your output folder (pid={1})".format(color_title(display_title), item['pid']))
+                continue
 
-      # If the checklocal option is enabled then we don't want to try to download unless force is set
-      if( not args.force and args.checklocal and not isLocalFileNameUnique(local_filename) ):
-        # Store the id as already recorded and save to the file 
-        print("'{0}' found locally and marked as already recorded (pid={1})".format(color_title(display_title), item['pid']))
-        appendNewPidAndSavePreviouslyRecordedShows(item['pid'], previously_recorded, previously_recorded_file_name)
-        continue
+        # If the checklocal option is enabled then we don't want to try to download unless force is set
+        if( not args.force and args.checklocal and not isLocalFileNameUnique(local_filename) ):
+          # Store the id as already recorded and save to the file 
+          print("'{0}' found locally and marked as already recorded (pid={1})".format(color_title(display_title), item['pid']))
+          appendNewPidAndSavePreviouslyRecordedShows(item['pid'], previously_recorded, previously_recorded_file_name)
+          continue
 
-      #############################################
-      # We will rely on ffmpeg to do the playlist download and merging for us
-      # the tool is much better suited to this than manually merging as there
-      # are always some corruption issues in the merged stream if done in code
-      
-      # Get the correct playlist url
-      playlist_data = find_m3u8_playlist_url(item, display_title, args.quality)
-      if playlist_data is None:
-        print("Error: Could not download show playlist, not found on server. Try requesting a different video quality.")
-        continue
+        #############################################
+        # We will rely on ffmpeg to do the playlist download and merging for us
+        # the tool is much better suited to this than manually merging as there
+        # are always some corruption issues in the merged stream if done in code
+        
+        # Get the correct playlist url
+        playlist_data = find_m3u8_playlist_url(item, display_title, args.quality)
+        if playlist_data is None:
+          print("Error: Could not download show playlist, not found on server. Try requesting a different video quality.")
+          continue
 
-      #print(playlist_data
-      # Now ask FFMPEG to download and remux all the fragments for us
-      result = download_m3u8_playlist_using_ffmpeg(ffmpegexec, playlist_data['url'], playlist_data['fragments'], local_filename, display_title, args.keeppartial, args.quality, args.nometadata, item)
-      if( not result is None ):
-        # if everything was OK then save the pid as successfully downloaded
-        appendNewPidAndSavePreviouslyRecordedShows(item['pid'], previously_recorded, previously_recorded_file_name) 
+        #print(playlist_data
+        # Now ask FFMPEG to download and remux all the fragments for us
+        result = download_m3u8_playlist_using_ffmpeg(ffmpegexec, playlist_data['url'], playlist_data['fragments'], local_filename, display_title, args.keeppartial, args.quality, args.nometadata, item)
+        if( not result is None ):
+          # if everything was OK then save the pid as successfully downloaded
+          appendNewPidAndSavePreviouslyRecordedShows(item['pid'], previously_recorded, previously_recorded_file_name) 
 
-        # Attempt to download artworks if available but only when plex is selected
-        if args.plex : 
-          if( item['is_movie']):
-            downloadMoviePoster(local_filename, display_title, item)
-          else: 
-            downloadTVShowPoster(local_filename, display_title, item)
+      # Attempt to download artworks if available but only when plex is selected
+      if args.novideo:
+        print("Downloading only artworks and subtitle files")
 
-        # Attempt to download any subtitles if available 
-        if not subtitles is None and len(subtitles) > 0:
-          try:
-            downloadSubtitlesFiles(subtitles, local_filename, display_title, item)
-          except ex:
-            print("Error: Could not download subtitle files for item, "+item['title'])
-            continue
+      if args.plex : 
+        if( item['is_movie']):
+          downloadMoviePoster(local_filename, display_title, item)
+        else: 
+          downloadTVShowPoster(local_filename, display_title, item)
+
+      # Attempt to download any subtitles if available 
+      if not subtitles is None and len(subtitles) > 0:
+        try:
+          downloadSubtitlesFiles(subtitles, local_filename, display_title, item)
+        except ex:
+          print("Error: Could not download subtitle files for item, "+item['title'])
+          continue
     
   finally:
     deinit() #Deinitialize the colorama library
