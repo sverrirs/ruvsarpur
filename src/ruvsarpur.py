@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 # coding=utf-8
-__version__ = "9.3.0"
+__version__ = "9.4.0"
 # When modifying remember to issue a new tag command in git before committing, then push the new tag
-#   git tag -a v9.3.0 -m "v9.3.0"
+#   git tag -a v9.4.0 -m "v9.4.0"
 #   git push origin master --tags
 """
 Python script that allows you to download TV shows off the Icelandic RÚV Sarpurinn website.
