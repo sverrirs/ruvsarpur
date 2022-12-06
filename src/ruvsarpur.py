@@ -138,7 +138,7 @@ def printProgress (iteration, total, prefix = '', suffix = '', decimals = 1, bar
 # Downloads the image poster for a movie
 # See naming guidelines: https://support.plex.tv/articles/200220677-local-media-assets-movies/#toc-2
 def downloadMoviePoster(local_filename, display_title, item):
-  poster_url = item['series_image'] if 'series_image' in item and len(item['series_image']) > 1 else item['episode_image'] if 'episode_image' in item and len(item['episode_image']) > 1 else None
+  poster_url = item['portrait_image'] if 'portrait_image' in item and len(item['portrait_image']) > 1 else item['series_image'] if 'series_image' in item and len(item['series_image']) > 1 else None
   if poster_url is None:
     return
 
@@ -152,7 +152,7 @@ def downloadMoviePoster(local_filename, display_title, item):
 # Downloads the image and season posters for episodic content
 def downloadTVShowPoster(local_filename, display_title, item):
   episode_poster_url = item['episode_image'] if 'episode_image' in item and len(item['episode_image']) > 1 else None
-  series_poster_url = item['series_image'] if 'series_image' in item and len(item['series_image']) > 1 else None
+  series_poster_url = item['portrait_image'] if 'portrait_image' in item and len(item['portrait_image']) > 1 else item['series_image'] if 'series_image' in item and len(item['series_image']) > 1 else None
 
   # Download the episode poster
   if not episode_poster_url is None:
@@ -162,9 +162,11 @@ def downloadTVShowPoster(local_filename, display_title, item):
 
   # Download the series poster  
   if not series_poster_url is None: 
-    series_poster_dir = Path(local_filename).parent.absolute()
+    series_poster_dir = Path(local_filename).parent.parent.absolute() # Go up one directory (i.e. not in Season01 but in the main series folder)
     series_poster_filename = f"{series_poster_dir}/poster.jpg"
-    download_file(series_poster_url, series_poster_filename, f"Series artwork for {item['series_title']}")
+    # Do not override a poster that is already there
+    if not Path(series_poster_filename).exists:
+      download_file(series_poster_url, series_poster_filename, f"Series artwork for {item['series_title']}")
     
 # Downloads all available subtitle files
 def downloadSubtitlesFiles(subtitles, local_video_filename, video_display_title, video_item):
@@ -1032,14 +1034,15 @@ def runMain():
         # if everything was OK then save the pid as successfully downloaded
         appendNewPidAndSavePreviouslyRecordedShows(item['pid'], previously_recorded, previously_recorded_file_name) 
 
-        # Attempt to download artworks if available
-        if( item['is_movie']):
-          downloadMoviePoster(local_filename, display_title, item)
-        else: 
-          downloadTVShowPoster(local_filename, display_title, item)
+        # Attempt to download artworks if available but only when plex is selected
+        if args.plex : 
+          if( item['is_movie']):
+            downloadMoviePoster(local_filename, display_title, item)
+          else: 
+            downloadTVShowPoster(local_filename, display_title, item)
 
         # Attempt to download any subtitles if available 
-        if not subtitles is None:
+        if not subtitles is None and len(subtitles) > 0:
           try:
             downloadSubtitlesFiles(subtitles, local_filename, display_title, item)
           except ex:
