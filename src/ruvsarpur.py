@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 # coding=utf-8
-__version__ = "9.4.0"
+__version__ = "9.5.0"
 # When modifying remember to issue a new tag command in git before committing, then push the new tag
-#   git tag -a v9.4.0 -m "v9.4.0"
+#   git tag -a v9.5.0 -m "v9.5.0"
 #   git push origin master --tags
 """
 Python script that allows you to download TV shows off the Icelandic RÚV Sarpurinn website.
@@ -134,6 +134,76 @@ def printProgress (iteration, total, prefix = '', suffix = '', decimals = 1, bar
     sys.stdout.flush()
   except: 
     pass # Ignore all errors when printing progress
+
+
+# Performs an optimistic lookup for the movie or show data based on its original title 
+# returns back enhancement information that can be used in PLEX to improve matching to official resources
+# Response from this API are, JSON on the form:
+#     {
+#       "d": [ list of results ],
+#       "q": the original query,
+#       "v": some number
+# }
+# Each result in d has the format
+# {
+#     "i": {
+#           "height": 1000,
+#           "imageUrl": "https://m.media-amazon.com/images/M/MV5BODljM2M4NDItZjZkZi00MTZkLTljMjEtMWE1NGU5NDJjMGVhL2ltYWdlL2ltYWdlXkEyXkFqcGdeQXVyMTMxODk2OTU@._V1_.jpg",
+#           "width": 675
+#            },
+#      "id": "tt4048272",     # <= IMDB ID
+#      "l": "Toni Erdmann",   # <= The movie title
+#      "q": "feature",        # <= type of resource, one of [feature, TV series, video, short, TV short], might be missing, example: https://v2.sg.media-imdb.com/suggestion/b/blade%20runner.json
+#      "qid": "movie",        # <= slugified version of the "q" result
+#      "rank": 11288,         # <= Result relevance ranking, sorted in ascending order
+#      "s": "Sandra Hüller, Peter Simonischek",    # <= Main actors
+#      "y": 2016              # <= Year released
+#}
+def lookupMovieInIMDB(movie_title, movie_year):
+  if movie_title is None or len(movie_title) < 1:
+    return None
+  
+  first_character_in_title = movie_title[0]
+  url_encoded_title = urllib.parse.quote(movie_title)
+
+  imdb_url = f"https://v2.sg.media-imdb.com/suggestion/{first_character_in_title}/{url_encoded_title}.json"
+  
+  r = __create_retry_session().get(imdb_url)  
+  # If the status is not success then terminate
+  if( r.status_code != 200 ):
+    return None
+
+  data = r.json()
+
+  # If no results then exit
+  if not 'd' in data or data['d'] is None or len(data['d']) < 1:
+    return None
+
+  result = None
+  num_features = sum(('q' in obj and ('feature' in obj['q'] or 'short' in obj['q'])) for obj in data['d'])
+
+  # If we have multiple feature results then we use the year to deduplicate and then find the first match that is both a movie and has a year matching
+  if num_features > 1 and not movie_year is None:
+    result = next((obj for obj in data['d'] if 'q' in obj and ('feature' in obj['q'] or 'short' in obj['q']) and 'y' in obj and movie_year in str(obj['y'])), None)
+  else:
+    # If we have only one feature result we pick the first available ignoring the year, this will mostly be correct
+    result = next((obj for obj in data['d'] if 'q' in obj and ('feature' in obj['q'] or 'short' in obj['q'])), None)
+    
+
+  # If not a movie or short film then exit
+  if result is None:
+    return None
+
+  # If no IMDB id then exit
+  if not 'id' in result or result['id'] is None:
+    return None
+
+  return {
+    "id": result['id'] if 'y' in result else None,
+    "title": result['l'] if 'y' in result else None,
+    "actors": result['s'] if 'y' in result else None,
+    "year": result['y'] if 'y' in result else None,
+  }
 
 # Downloads the image poster for a movie
 # See naming guidelines: https://support.plex.tv/articles/200220677-local-media-assets-movies/#toc-2
@@ -566,6 +636,8 @@ def createShowTitle(show, include_original_title=False, use_plex_formatting=Fals
     
   return show_title
 
+RE_CAPTURE_YEAR_FROM_DESCRIPTION = re.compile(r' frá (?P<year>\d{4})', re.IGNORECASE)
+
 def createLocalFileName(show, include_original_title=False, use_plex_formatting=False):
   # Create the show title
   show_title = createShowTitle(show, include_original_title, use_plex_formatting)
@@ -573,18 +645,33 @@ def createLocalFileName(show, include_original_title=False, use_plex_formatting=
   if( use_plex_formatting ):
     original_title = ' ({0})'.format(sanitizeFileName(show['original-title'])) if 'original-title' in show and not show['original-title'] is None else ""
     series_title = show['series_title']
-    
+
     if 'is_movie' in show and show['is_movie'] is True: 
+      # Attempt to extract the year of the movie
+      movie_year = getGroup(RE_CAPTURE_YEAR_FROM_DESCRIPTION, 'year', show['series_sdesc'])
+      imdb_id_part = ''
+      imdb_year_part = ''
+
+      # Check imdb for a match, first try original title, then series title
+      imdb = lookupMovieInIMDB(show['original-title'], movie_year)
+      if imdb is None: 
+        imdb = lookupMovieInIMDB(series_title, movie_year)
+      
+      if not imdb is None:
+        # Enrich the format if a match is found
+        imdb_id_part = f" {{imdb-{imdb['id']}}}" if not imdb['id'] is None else ''
+        imdb_year_part = f" ({imdb['year']})" if not imdb['year'] is None else ''
+
       # Dealing with a movie for sure, it may be episodic and therefore should use the "partX" notation
       # described here: https://support.plex.tv/articles/naming-and-organizing-your-movie-media-files/#toc-3
       # Examples:
       #   \show_title\series_title (original-title) - part1.mp4
       #   \show_title\series_title (original-title) - part2.mp4
       if( 'ep_num' in show and 'ep_total' in show and int(show['ep_total']) > 1):
-        return "{0}\\{1}{2} - part{3}.mp4".format(sanitizeFileName(show_title), sanitizeFileName(series_title), original_title, str(show['ep_num']).zfill(2))
+        return f"{sanitizeFileName(show_title)}\\{sanitizeFileName(series_title)}{original_title}{imdb_year_part}{imdb_id_part} - part{str(show['ep_num']).zfill(2)}.mp4"
       else:
         # Just normal single file movie
-        return "{0}\\{1}{2}.mp4".format(sanitizeFileName(show_title), sanitizeFileName(series_title), original_title)
+        return f"{sanitizeFileName(show_title)}\\{sanitizeFileName(series_title)}{original_title}{imdb_year_part}{imdb_id_part}.mp4"
     elif( 'ep_num' in show and 'ep_total' in show and int(show['ep_total']) > 1):
       # This is an episode 
       # Plex formatting creates a local filename according to the rules defined here
@@ -780,7 +867,7 @@ def getVodSeriesSchedule(sid, incoming_program, isMovies):
 
     entry['is_movie'] = isMovies
     # If not movie then do a small trick to see if this flag is incorrect by checking the description text
-    if not isMovies and 'kvikmynd ' in entry['desc']:
+    if not isMovies and ('kvikmynd ' in str(entry['desc']).lower() or 'kvikmynd ' in str(series_description).lower() or 'kvikmynd ' in str(series_shortdescription).lower()):
       entry['is_movie'] = True
 
     entry['ep_num'] = str(episode['number']) if 'number' in episode else getGroup(RE_CAPTURE_VOD_EPNUM_FROM_TITLE, 'ep_num', episode['title'])
@@ -860,12 +947,15 @@ def runMain():
     # Get information about already downloaded episodes
     previously_recorded = getPreviouslyRecordedShows(previously_recorded_file_name)
 
+    schedule_was_refreshed = False
+
     # Get an existing tv schedule if possible
     if( not args.refresh ):
       schedule = getExistingTvSchedule(tv_schedule_file_name)
     
     if( args.refresh or schedule is None or schedule['date'].date() < today ):
       schedule = {}
+      schedule_was_refreshed = True
 
       # Downloading the full VOD available schedule as well
       for typeValue, catName in vod_types_and_categories:
@@ -876,7 +966,7 @@ def runMain():
           continue
       
     # Save the tv schedule as the most current one, save it to ensure we format the today date
-    if( len(schedule) > 1 ):
+    if( schedule_was_refreshed and len(schedule) > 1 ):
       saveCurrentTvSchedule(schedule,tv_schedule_file_name)
 
     if( args.debug ):
