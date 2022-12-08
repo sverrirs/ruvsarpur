@@ -80,8 +80,6 @@ TV_SCHEDULE_LOG_FILE = 'tvschedule.json'
 
 # The available bitrate streams
 QUALITY_BITRATE = {
-    "Very Low": { 'code': "500", 'bits': "450000", 'chunk_size' : 750000},
-    "Low"     : { 'code': "800", 'bits': "750000", 'chunk_size' :1000000},
     "Normal"  : { 'code': "1200", 'bits': "1150000", 'chunk_size':1500000},
     "HD720"   : { 'code': "2400", 'bits': "2350000", 'chunk_size':2800000},
     "HD1080"  : { 'code': "3600", 'bits': "3550000", 'chunk_size':4000000}
@@ -179,15 +177,21 @@ def lookupMovieInIMDB(movie_title, movie_year):
   if not 'd' in data or data['d'] is None or len(data['d']) < 1:
     return None
 
+  # Limit the list to the first three matches, it is unlikely that a good match is available in the response outside of the first three
+  matches = data['d'][0:3]
+
   result = None
-  num_features = sum(('q' in obj and ('feature' in obj['q'] or 'short' in obj['q'])) for obj in data['d'])
+  num_features = sum(('q' in obj and ('feature' in obj['q'] or 'short' in obj['q'])) for obj in matches)
 
   # If we have multiple feature results then we use the year to deduplicate and then find the first match that is both a movie and has a year matching
   if num_features > 1 and not movie_year is None:
-    result = next((obj for obj in data['d'] if 'q' in obj and ('feature' in obj['q'] or 'short' in obj['q']) and 'y' in obj and movie_year in str(obj['y'])), None)
-  else:
+    result = next((obj for obj in matches if 'q' in obj and ('feature' in obj['q'] or 'short' in obj['q']) and 'y' in obj and movie_year in str(obj['y'])), None)
+  
+  # If we either only have a single feature or if we couldn't find a match using the year
+  # The year can be wrong from the RUV content unfortunately
+  if num_features == 1 or result is None:
     # If we have only one feature result we pick the first available ignoring the year, this will mostly be correct
-    result = next((obj for obj in data['d'] if 'q' in obj and ('feature' in obj['q'] or 'short' in obj['q'])), None)
+    result = next((obj for obj in matches if 'q' in obj and ('feature' in obj['q'] or 'short' in obj['q'])), None)
     
 
   # If not a movie or short film then exit
@@ -867,7 +871,15 @@ def getVodSeriesSchedule(sid, incoming_program, isMovies):
 
     entry['is_movie'] = isMovies
     # If not movie then do a small trick to see if this flag is incorrect by checking the description text
-    if not isMovies and ('kvikmynd ' in str(entry['desc']).lower() or 'kvikmynd ' in str(series_description).lower() or 'kvikmynd ' in str(series_shortdescription).lower()):
+    if not isMovies and (
+       'kvikmynd ' in str(entry['desc']).lower() or 
+       'kvikmynd ' in str(series_description).lower() or 
+       'kvikmynd ' in str(series_shortdescription).lower() or
+       'heimildarmynd ' in str(series_shortdescription).lower() or
+       'heimildarmyndin ' in str(series_shortdescription).lower() or
+       'stuttmynd ' in str(series_shortdescription).lower() or
+       'stuttmyndin ' in str(series_shortdescription).lower()
+       ):
       entry['is_movie'] = True
 
     entry['ep_num'] = str(episode['number']) if 'number' in episode else getGroup(RE_CAPTURE_VOD_EPNUM_FROM_TITLE, 'ep_num', episode['title'])
