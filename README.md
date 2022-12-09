@@ -138,8 +138,6 @@ The available values are:
 
 | Value | Description | kbps |
 | ----- | ----- | ----- |
-| `"Very Low"` | Very small, for very old mobile devices with small screens (resolution under 320x240) | 500kbps |
-| `"Low"` | Small, for older devices, e.g. iPhone 4G (resolution under 640x360) | 800kbps |
 | `"Normal"` | Normal quality expected in a standard definition broadcast, works well on most devices. This is the default. | 1200kbps |
 | `"HD720"` | 720p good quality, intended for HD-ready devices | 2400kbps |
 | `"HD1080"` | 1080p very good quality intended for newer devices marked as Full-HD resolution. This produces very big files. | 3600kbps |

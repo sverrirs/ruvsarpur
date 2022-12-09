@@ -239,7 +239,7 @@ def downloadTVShowPoster(local_filename, display_title, item):
     series_poster_dir = Path(local_filename).parent.parent.absolute() # Go up one directory (i.e. not in Season01 but in the main series folder)
     series_poster_filename = f"{series_poster_dir}\\poster.jpg"
     # Do not override a poster that is already there
-    if not Path(series_poster_filename).exists:
+    if not Path(series_poster_filename).exists():
       download_file(series_poster_url, series_poster_filename, f"Series artwork for {item['series_title']}")
     
 # Downloads all available subtitle files
