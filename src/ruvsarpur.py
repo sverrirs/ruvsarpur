@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 # coding=utf-8
-__version__ = "9.5.0"
+__version__ = "10.0.0"
 # When modifying remember to issue a new tag command in git before committing, then push the new tag
-#   git tag -a v9.5.0 -m "v9.5.0"
+#   git tag -a v10.0.0 -m "v10.0.0"
 #   git push origin master --tags
 """
 Python script that allows you to download TV shows off the Icelandic RÚV Sarpurinn website.
@@ -44,6 +44,7 @@ from operator import itemgetter # For sorting the download list items https://do
 import ntpath # Used to extract file name from path for all platforms http://stackoverflow.com/a/8384788
 import glob # Used to do partial file path matching (when searching for already downloaded files) http://stackoverflow.com/a/2225582/779521
 import uuid # Used to generate a ternary backup local filename if everything else fails.
+from datetime import date # To generate the current year for sport seasons when no show time exists
 
 import urllib.request, urllib.parse # Downloading of data from URLs (used with the JSON parser)
 import requests # Downloading of data from HTTP
@@ -405,18 +406,28 @@ def download_m3u8_playlist_using_ffmpeg(ffmpegexec, playlist_url, playlist_fragm
     # Determine the description for the file
     ep_description = ''
 
+    # Find the series description and favour the longer description
+    series_description = videoInfo['desc']
+    if( len(videoInfo['series_sdesc']) > len(series_description)):
+      series_description = videoInfo['series_sdesc']
+
     # Description for movies, we want the longer version of
     if videoInfo['is_movie']:
-      ep_description = videoInfo['desc']
-      if( len(videoInfo['series_sdesc']) > len(ep_description)):
-        ep_description = videoInfo['series_sdesc']
+      ep_description = series_description
     
     # Description for epsiodic content (do not use the series description)
-    if len(ep_description) <= 0 and 'description' in videoInfo['episode'] and len(videoInfo['episode']['description']) > 1 :
-      ep_description = videoInfo['episode']['description']    
+    if len(ep_description) <= 0 and 'description' in videoInfo['episode'] and len(videoInfo['episode']['description']) > 4 :
+      ep_description = videoInfo['episode']['description']
+
+    # If there is no description then we use the series as a fallback
+    if len(ep_description) < 4:
+      ep_description = series_description
+
+    if videoInfo['is_sport']:
+      ep_description = f"{ep_description.rstrip('.')}. Sýnt {str(videoInfo['showtime'])[8:10]}.{str(videoInfo['showtime'])[5:7]}.{str(videoInfo['showtime'])[:4]}"
 
     prog_args.append("-metadata")
-    prog_args.append("{0}={1}".format('title', sanitizeFileName(videoInfo['title'] if videoInfo['is_movie'] else videoInfo['episode_title']) )) #The title of this video. (String)	
+    prog_args.append("{0}={1}".format('title', sanitizeFileName(videoInfo['title'] if videoInfo['is_movie'] or videoInfo['is_sport'] else videoInfo['episode_title']) )) #The title of this video. (String)	
     prog_args.append("-metadata")
     prog_args.append("{0}={1}".format('comment', sanitizeFileName(videoInfo['desc']) ))  #A (content) description of this video.
     prog_args.append("-metadata")
@@ -433,7 +444,7 @@ def download_m3u8_playlist_using_ffmpeg(ffmpegexec, playlist_url, playlist_fragm
       prog_args.append("{0}={1}".format('season_number', int(videoInfo['season_num'])))  #The season number, in the range of 0 to 255 only
 
     prog_args.append("-metadata")
-    prog_args.append("{0}={1}".format('media_type', "Movie" if videoInfo['is_movie'] else "TV Show"))  #The genre this video belongs to. (String)	
+    prog_args.append("{0}={1}".format('media_type', "Movie" if videoInfo['is_movie'] else 'Sports' if videoInfo['is_sport'] else "TV Show"))  #The genre this video belongs to. (String)	
 
   # Finally the output file path
   prog_args.append(local_filename)
@@ -676,6 +687,19 @@ def createLocalFileName(show, include_original_title=False, use_plex_formatting=
       else:
         # Just normal single file movie
         return f"{sanitizeFileName(show_title)}\\{sanitizeFileName(series_title)}{original_title}{imdb_year_part}{imdb_id_part}.mp4"
+    elif( 'is_sport' in show and show['is_sport']):
+      # Special handling for sporting events
+      # Example
+      #   \show_title\Season 2022\title - showtime[:10].mp4 unless the showtime is already present in the title of the episode
+      sport_show_title = show['title']
+      formatted_showtime = f"{str(show['showtime'])[8:10]}.{str(show['showtime'])[5:7]}.{str(show['showtime'])[:4]}"
+      if (
+         not show['showtime'][:10] in sport_show_title and 
+         not str(show['showtime'][:10]).replace('-','.') in sport_show_title and # Icelandic dates usually include dots and not dashes
+         not formatted_showtime in sport_show_title  # Icelandic dates are usually on the form dd.mm.yyyy not yyyy.mm.dd
+        ):
+        sport_show_title = f"{sport_show_title} ({formatted_showtime})"
+      return f"{sanitizeFileName(show_title)}\\Season {str(show['season_num'])}\\{sport_show_title}.mp4"
     elif( 'ep_num' in show and 'ep_total' in show and int(show['ep_total']) > 1):
       # This is an episode 
       # Plex formatting creates a local filename according to the rules defined here
@@ -767,6 +791,7 @@ def getVodSchedule(panelType, categoryName):
     # HEIMILDARMYNDIR, KVIKMYNDIR, ÁTT ÞÚ EFTIR AÐ SJÁ ÞESSAR?
     #isMovie = True if 'kvikmyndir' in panel['slug'] or 'att-thu-eftir-ad-sja-thessar' in panel['slug'] or 'heimildarmyndir' in panel['slug'] else False
     isMovie = True if 'kvikmyndir' in panel['slug'] or 'att-thu-eftir-ad-sja-thessar' in panel['slug'] else False
+    isSport = True if 'ithrottir' in panel['slug'] else False
 
     for program in panel['programs']:
       completed_programs += 1
@@ -776,7 +801,7 @@ def getVodSchedule(panelType, categoryName):
       # Add all details for the given program to the schedule
       try:
         # We want to not override existing items in the schedule dictionary in case they are downloaded again
-        program_schedule = getVodSeriesSchedule(program['id'], program, isMovie)
+        program_schedule = getVodSeriesSchedule(program['id'], program, isMovie, isSport)
         # This joining of the two dictionaries below is necessary to ensure that 
         # the existing items are not overwritten, therefore schedule is appended to the new list, existing items overwriting any new items.
         schedule = dict(list(program_schedule.items()) + list(schedule.items())) 
@@ -827,7 +852,7 @@ def formatCoverArtResolutionMacro(rawsrc):
 # Given a series id and program data, downloads all 
 # episodes available for that series
 # isMovies parameter indicates if the programs belong to the list of known movie categories and should be treated as such
-def getVodSeriesSchedule(sid, incoming_program, isMovies):
+def getVodSeriesSchedule(sid, incoming_program, isMovies, isSport):
   
   graphdata = '?operationName=getEpisode&variables={"programID":'+str(sid)+'}&extensions={"persistedQuery":{"version":1,"sha256Hash":"f3f957a3a577be001eccf93a76cf2ae1b6d10c95e67305c56e4273279115bb93"}}'
   data = requestsVodDataRetrieveWithRetries(graphdata)
@@ -921,6 +946,31 @@ def getVodSeriesSchedule(sid, incoming_program, isMovies):
     # e.g. the news, kastljos, weather
     if entry['ep_total'] is None and not episode['firstrun'] is None and len(episode['firstrun']) > 1:
       entry['title'] = '{0} ({1})'.format(entry['title'], episode['firstrun'])
+
+    entry['is_sport'] = isSport
+    if not isSport and (
+      'hm stofan' in      str(series_title).lower() or
+      'hm í ' in          str(series_title).lower() or
+      'em kvenna ' in     str(series_title).lower() or
+      'em karla ' in      str(series_title).lower() or
+      'bikarkeppni í ' in str(series_title).lower() or
+      'undankeppni hm' in str(series_title).lower() or
+      'undankeppni em' in str(series_title).lower() or
+      'íþróttir' ==       str(series_title).lower() or
+      ' í sundi' in       str(series_title).lower() or
+      ' í handbolta' in   str(series_title).lower() or
+      ' í fótbolta' in    str(series_title).lower() or
+      ' í körfubolta' in  str(series_title).lower() or
+      ' landsleikir í' in str(series_title).lower() or
+      ' landsleikur í' in str(series_title).lower()
+       ):
+       entry['is_sport'] = True
+
+    # Special season handling for sporting events
+    # Special title handling for sporting events
+    if entry['is_sport']:
+       entry['season_num'] = entry['showtime'][:4] if 'showtime' in entry and not entry['showtime'] is None and len(entry['showtime']) > 4 else str(date.today().year)
+       entry['title'] = '{0} ({1})'.format(entry['series_title'], entry['episode_title'])
 
     schedule[entry['pid']] = entry
 
