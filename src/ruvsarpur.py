@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 # coding=utf-8
-__version__ = "10.0.0"
+__version__ = "10.1.0"
 # When modifying remember to issue a new tag command in git before committing, then push the new tag
-#   git tag -a v10.0.0 -m "v10.0.0"
+#   git tag -a v10.1.0 -m "v10.1.0"
 #   git push origin master --tags
 """
 Python script that allows you to download TV shows off the Icelandic RÚV Sarpurinn website.
@@ -433,9 +433,11 @@ def download_m3u8_playlist_using_ffmpeg(ffmpegexec, playlist_url, playlist_fragm
     prog_args.append("-metadata")
     prog_args.append("{0}={1}".format('synopsis', sanitizeFileName(ep_description) ))  #A synopsis, a longer description of this video
 
-    if not videoInfo['is_movie']:
+    if not videoInfo['is_movie'] or videoInfo['is_sport']:
       prog_args.append("-metadata")
       prog_args.append("{0}={1}".format('show', sanitizeFileName(videoInfo['series_title']) )) #The name of the TV show,
+
+    if not videoInfo['is_movie']:
       prog_args.append("-metadata")
       prog_args.append("{0}={1}".format('episode_id', videoInfo['ep_num']))  #Either the episode name or episode number, for display.
       prog_args.append("-metadata")
@@ -692,6 +694,7 @@ def createLocalFileName(show, include_original_title=False, use_plex_formatting=
       # Example
       #   \show_title\Season 2022\title - showtime[:10].mp4 unless the showtime is already present in the title of the episode
       sport_show_title = show['title']
+      
       formatted_showtime = f"{str(show['showtime'])[8:10]}.{str(show['showtime'])[5:7]}.{str(show['showtime'])[:4]}"
       if (
          not show['showtime'][:10] in sport_show_title and 
@@ -699,7 +702,7 @@ def createLocalFileName(show, include_original_title=False, use_plex_formatting=
          not formatted_showtime in sport_show_title  # Icelandic dates are usually on the form dd.mm.yyyy not yyyy.mm.dd
         ):
         sport_show_title = f"{sport_show_title} ({formatted_showtime})"
-      return f"{sanitizeFileName(show_title)}\\Season {str(show['season_num'])}\\{sport_show_title}.mp4"
+      return f"{sanitizeFileName(show_title)}\\Season 01\\{sport_show_title}.mp4"
     elif( 'ep_num' in show and 'ep_total' in show and int(show['ep_total']) > 1):
       # This is an episode 
       # Plex formatting creates a local filename according to the rules defined here
@@ -949,6 +952,9 @@ def getVodSeriesSchedule(sid, incoming_program, isMovies, isSport):
 
     entry['is_sport'] = isSport
     if not isSport and (
+      'ólympíuleikarnir ' in      str(series_title).lower() or
+      'ólympíuleikar ' in      str(series_title).lower() or
+      'ólympíuleikum ' in      str(series_title).lower() or
       'hm stofan' in      str(series_title).lower() or
       'hm í ' in          str(series_title).lower() or
       'em kvenna ' in     str(series_title).lower() or
@@ -969,8 +975,15 @@ def getVodSeriesSchedule(sid, incoming_program, isMovies, isSport):
     # Special season handling for sporting events
     # Special title handling for sporting events
     if entry['is_sport']:
-       entry['season_num'] = entry['showtime'][:4] if 'showtime' in entry and not entry['showtime'] is None and len(entry['showtime']) > 4 else str(date.today().year)
-       entry['title'] = '{0} ({1})'.format(entry['series_title'], entry['episode_title'])
+      # Ensure that the year is in the title, because PLEX doesn't handle seasons that are longer than 3 digits, i.e. we cannot use 'Season 2022' there will just be garbage created, i.e. 'Season 230'
+      if not str(entry['showtime'])[:4] in series_title:
+        entry['series_title'] = series_title = f"{series_title} {str(entry['showtime'])[:4]}"
+
+      # Add the subtitle into the final title of the episode, i.e. to include dates or the teams playing
+      entry['title'] = '{0} ({1})'.format(entry['series_title'], entry['episode_title'])
+
+      # We cannot use seasons numbers that are longer than 999 as there are only three digits allowed for season numbers
+      #entry['season_num'] = entry['showtime'][:4] if 'showtime' in entry and not entry['showtime'] is None and len(entry['showtime']) > 4 else str(date.today().year)
 
     schedule[entry['pid']] = entry
 
