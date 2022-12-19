@@ -448,6 +448,14 @@ def download_m3u8_playlist_using_ffmpeg(ffmpegexec, playlist_url, playlist_fragm
     prog_args.append("-metadata")
     prog_args.append("{0}={1}".format('media_type', "Movie" if videoInfo['is_movie'] else 'Sports' if videoInfo['is_sport'] else "TV Show"))  #The genre this video belongs to. (String)	
 
+    # Add the RUV specific identifier metadata, this can be used by other tooling to identify the entry
+    prog_args.append("-metadata")
+    prog_args.append("{0}={1}".format('ruvpid', int(videoInfo['pid'])))  #Program identifier
+    prog_args.append("-metadata")
+    prog_args.append("{0}={1}".format('ruvsid', int(videoInfo['sid'])))  #Season identifier
+    prog_args.append("-movflags")
+    prog_args.append("+use_metadata_tags") # Necessary to turn on custom MP4 video tags (without it ffmpeg doesn't write tags it doesn't understand)
+
   # Finally the output file path
   prog_args.append(local_filename)
 
