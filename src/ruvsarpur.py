@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # coding=utf-8
-__version__ = "10.1.0"
+__version__ = "10.2.0"
 # When modifying remember to issue a new tag command in git before committing, then push the new tag
 #   git tag -a v10.1.0 -m "v10.1.0"
 #   git push origin master --tags
@@ -45,6 +45,7 @@ import ntpath # Used to extract file name from path for all platforms http://sta
 import glob # Used to do partial file path matching (when searching for already downloaded files) http://stackoverflow.com/a/2225582/779521
 import uuid # Used to generate a ternary backup local filename if everything else fails.
 from datetime import date # To generate the current year for sport seasons when no show time exists
+import platform  # To get information about if we are running on windows or not
 
 import urllib.request, urllib.parse # Downloading of data from URLs (used with the JSON parser)
 import requests # Downloading of data from HTTP
@@ -212,12 +213,17 @@ def lookupMovieInIMDB(movie_title, movie_year):
 
 # Downloads the image poster for a movie
 # See naming guidelines: https://support.plex.tv/articles/200220677-local-media-assets-movies/#toc-2
-def downloadMoviePoster(local_filename, display_title, item):
+def downloadMoviePoster(local_filename, display_title, item, output_path):
   poster_url = item['portrait_image'] if 'portrait_image' in item and not item['portrait_image'] is None else item['series_image'] if 'series_image' in item and not item['series_image'] is None else None
   if poster_url is None:
     return
 
   poster_dir = Path(local_filename).parent.absolute()
+
+  # If the poster dir is the root directory we do not want to save the poster there
+  if Path(poster_dir).samefile(str(output_path)):
+    return
+
   # Note RUV currently always has JPEGs
   poster_filename = f"{poster_dir}\\poster.jpg"
 
@@ -225,7 +231,7 @@ def downloadMoviePoster(local_filename, display_title, item):
   
 
 # Downloads the image and season posters for episodic content
-def downloadTVShowPoster(local_filename, display_title, item):
+def downloadTVShowPoster(local_filename, display_title, item, output_path):
   episode_poster_url = item['episode_image'] if 'episode_image' in item and not item['episode_image'] is None else None
   series_poster_url = item['portrait_image'] if 'portrait_image' in item and not item['portrait_image'] is None else item['series_image'] if 'series_image' in item and not item['series_image'] is None else None
 
@@ -238,10 +244,13 @@ def downloadTVShowPoster(local_filename, display_title, item):
   # Download the series poster  
   if not series_poster_url is None: 
     series_poster_dir = Path(local_filename).parent.parent.absolute() # Go up one directory (i.e. not in Season01 but in the main series folder)
-    series_poster_filename = f"{series_poster_dir}\\poster.jpg"
-    # Do not override a poster that is already there
-    if not Path(series_poster_filename).exists():
-      download_file(series_poster_url, series_poster_filename, f"Series artwork for {item['series_title']}")
+
+    # If the poster dir is the root directory we do not want to save the poster there
+    if not Path(series_poster_dir).samefile(str(output_path)):
+      series_poster_filename = f"{series_poster_dir}\\poster.jpg"
+      # Do not override a poster that is already there
+      if not Path(series_poster_filename).exists():
+        download_file(series_poster_url, series_poster_filename, f"Series artwork for {item['series_title']}")
     
 # Downloads all available subtitle files
 def downloadSubtitlesFiles(subtitles, local_video_filename, video_display_title, video_item):
@@ -429,7 +438,8 @@ def download_m3u8_playlist_using_ffmpeg(ffmpegexec, playlist_url, playlist_fragm
     prog_args.append("-metadata")
     prog_args.append("{0}={1}".format('title', sanitizeFileName(videoInfo['title'] if videoInfo['is_movie'] or videoInfo['is_sport'] else videoInfo['episode_title']) )) #The title of this video. (String)	
     prog_args.append("-metadata")
-    prog_args.append("{0}={1}".format('comment', sanitizeFileName(videoInfo['desc']) ))  #A (content) description of this video.
+    #prog_args.append("{0}={1}".format('comment', sanitizeFileName(videoInfo['desc']) ))  #A (content) description of this video.
+    prog_args.append("{0}={1}".format('comment', 'ruvinfo:{0}:{1}'.format(str(videoInfo['pid']), str(videoInfo['sid']))))  #The program id and series id for the video, prefixed with ruvinfo for easier parsing
     prog_args.append("-metadata")
     prog_args.append("{0}={1}".format('synopsis', sanitizeFileName(ep_description) ))  #A synopsis, a longer description of this video
 
@@ -449,13 +459,16 @@ def download_m3u8_playlist_using_ffmpeg(ffmpegexec, playlist_url, playlist_fragm
     prog_args.append("{0}={1}".format('media_type', "Movie" if videoInfo['is_movie'] else 'Sports' if videoInfo['is_sport'] else "TV Show"))  #The genre this video belongs to. (String)	
 
     # Add the RUV specific identifier metadata, this can be used by other tooling to identify the entry
-    prog_args.append("-metadata")
-    prog_args.append("{0}={1}".format('ruvpid', int(videoInfo['pid'])))  #Program identifier
-    prog_args.append("-metadata")
-    prog_args.append("{0}={1}".format('ruvsid', int(videoInfo['sid'])))  #Season identifier
-    prog_args.append("-movflags")
-    prog_args.append("+use_metadata_tags") # Necessary to turn on custom MP4 video tags (without it ffmpeg doesn't write tags it doesn't understand)
-
+    # Note: These tags get dropped by ffmpeg unless the use_metadata_tag switch is used, but when that is used the 
+    #       standard tags above stop working, so the solution is to encode this data into the comment field instead. 
+    #       shitty solution but the easiest to maintain compatibility
+    #prog_args.append("-movflags")
+    #prog_args.append("use_metadata_tags") # Necessary to turn on custom MP4 video tags (without it ffmpeg doesn't write tags it doesn't understand)
+    #prog_args.append("-metadata")
+    #prog_args.append("{0}={1}".format('ruvpid', str(videoInfo['pid'])))  #Program identifier
+    #prog_args.append("-metadata")
+    #prog_args.append("{0}={1}".format('ruvsid', str(videoInfo['sid'])))  #Season identifier
+    
   # Finally the output file path
   prog_args.append(local_filename)
 
@@ -746,13 +759,12 @@ def isLocalFileNameUnique(local_filename):
 
 #
 # Locates the ffmpeg executable and returns a full path to it
-#  NOTE: Currently this only works  under Windows, need to change the discovery mechanism for linux/osx
 def findffmpeg(path_to_ffmpeg_install=None, working_dir=None):
   if not path_to_ffmpeg_install is None and os.path.isfile(path_to_ffmpeg_install):
     return path_to_ffmpeg_install
 
   # Attempts to search for it under the bin folder
-  bin_dist = os.path.join(working_dir, "..","bin","ffmpeg.exe")
+  bin_dist = os.path.join(working_dir, "..","bin","ffmpeg.exe" if platform.system() == 'Windows' else 'ffmpeg')
   if os.path.isfile(bin_dist):
     return str(Path(bin_dist).resolve())
   
@@ -1096,7 +1108,7 @@ def runMain():
       
     total_items = len(download_list)
     if( total_items <= 0 ):
-      print("Nothing found to download")
+      print(f"Nothing found to download for {color_title(args.find) if args.find is not None else color_sid(args.sid) if args.sid is not None else color_pid(args.pid) if args.pid is not None else color_title('[No search term entered]')}")
       sys.exit(0)
       
     print( "Found {0} show(s)".format(total_items, ))
@@ -1216,9 +1228,9 @@ def runMain():
 
       if args.plex : 
         if( item['is_movie']):
-          downloadMoviePoster(local_filename, display_title, item)
+          downloadMoviePoster(local_filename, display_title, item, Path(args.output))
         else: 
-          downloadTVShowPoster(local_filename, display_title, item)
+          downloadTVShowPoster(local_filename, display_title, item, Path(args.output))
 
       # Attempt to download any subtitles if available 
       if not subtitles is None and len(subtitles) > 0:
