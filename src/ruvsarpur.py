@@ -226,7 +226,7 @@ def downloadMoviePoster(local_filename, display_title, item, output_path):
     return
 
   # Note RUV currently always has JPEGs
-  poster_filename = f"{poster_dir}\\poster.jpg"
+  poster_filename = f"{poster_dir}{sep}poster.jpg"
 
   download_file(poster_url, poster_filename, f"Movie artwork for {item['title']}")
   
