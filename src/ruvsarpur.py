@@ -248,7 +248,7 @@ def downloadTVShowPoster(local_filename, display_title, item, output_path):
 
     # If the poster dir is the root directory we do not want to save the poster there
     if not Path(series_poster_dir).samefile(str(output_path)):
-      series_poster_filename = f"{series_poster_dir}\\poster.jpg"
+      series_poster_filename = f"{series_poster_dir}{sep}poster.jpg"
       # Do not override a poster that is already there
       if not Path(series_poster_filename).exists():
         download_file(series_poster_url, series_poster_filename, f"Series artwork for {item['series_title']}")
