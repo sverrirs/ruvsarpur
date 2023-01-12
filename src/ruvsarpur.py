@@ -29,6 +29,7 @@ Author: Sverrir Sigmundarson  info@sverrirs.com  https://www.sverrirs.com
 #      For alternative install http://stackoverflow.com/a/33163704
 
 import sys, os.path, re, time
+from os import sep
 import traceback   # For exception details
 import textwrap # For text wrapping in the console window
 from colorama import init, deinit # For colorized output to console windows (platform and shell independent)
@@ -217,7 +218,7 @@ def downloadMoviePoster(local_filename, display_title, item, output_path):
     return
 
   # Note RUV currently always has JPEGs
-  poster_filename = f"{poster_dir}\\poster.jpg"
+  poster_filename = f"{poster_dir}{sep}poster.jpg"
 
   download_file(poster_url, poster_filename, f"Movie artwork for {item['title']}")
   
@@ -239,7 +240,7 @@ def downloadTVShowPoster(local_filename, display_title, item, output_path):
 
     # If the poster dir is the root directory we do not want to save the poster there
     if not Path(series_poster_dir).samefile(str(output_path)):
-      series_poster_filename = f"{series_poster_dir}\\poster.jpg"
+      series_poster_filename = f"{series_poster_dir}{sep}poster.jpg"
       # Do not override a poster that is already there
       if not Path(series_poster_filename).exists():
         download_file(series_poster_url, series_poster_filename, f"Series artwork for {item['series_title']}")
@@ -700,10 +701,10 @@ def createLocalFileName(show, include_original_title=False, use_plex_formatting=
       #   \show_title\series_title (original-title) - part1.mp4
       #   \show_title\series_title (original-title) - part2.mp4
       if( 'ep_num' in show and 'ep_total' in show and int(show['ep_total']) > 1):
-        return f"{sanitizeFileName(show_title)}\\{sanitizeFileName(series_title)}{original_title}{imdb_year_part}{imdb_id_part} - part{str(show['ep_num']).zfill(2)}.mp4"
+        return f"{sanitizeFileName(show_title)}{sep}{sanitizeFileName(series_title)}{original_title}{imdb_year_part}{imdb_id_part} - part{str(show['ep_num']).zfill(2)}.mp4"
       else:
         # Just normal single file movie
-        return f"{sanitizeFileName(show_title)}\\{sanitizeFileName(series_title)}{original_title}{imdb_year_part}{imdb_id_part}.mp4"
+        return f"{sanitizeFileName(show_title)}{sep}{sanitizeFileName(series_title)}{original_title}{imdb_year_part}{imdb_id_part}.mp4"
     elif( 'is_sport' in show and show['is_sport']):
       # Special handling for sporting events
       # Example
@@ -727,9 +728,9 @@ def createLocalFileName(show, include_original_title=False, use_plex_formatting=
       #   \show_title\Season 01\series_title (original-title) - s01e01.mp4
       # or 
       #    \show_title\Season 01\series_title (original-title) - showtime [pid].mp4
-      return "{0}\\Season {4}\\{1}{2} - s{4}e{3}.mp4".format(sanitizeFileName(show_title), sanitizeFileName(series_title), original_title, str(show['ep_num']).zfill(2), str(show['season_num'] if 'season_num' in show else 1).zfill(2))
+      return "{0}{sep}Season {4}{sep}{1}{2} - s{4}e{3}.mp4".format(sanitizeFileName(show_title), sanitizeFileName(series_title), original_title, str(show['ep_num']).zfill(2), str(show['season_num'] if 'season_num' in show else 1).zfill(2), sep=sep)
     else:
-      return "{0}\\{1}{2} - {3} - [{4}].mp4".format(sanitizeFileName(show_title), sanitizeFileName(series_title), original_title, sanitizeFileName(show['showtime'][:10]), sanitizeFileName(show['pid']))
+      return "{0}{sep}{1}{2} - {3} - [{4}].mp4".format(sanitizeFileName(show_title), sanitizeFileName(series_title), original_title, sanitizeFileName(show['showtime'][:10]), sanitizeFileName(show['pid']), sep=sep)
       
   else:
     # Create the local filename, if not multiple episodes then
