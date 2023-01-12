@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 # coding=utf-8
-__version__ = "11.0.0"
+__version__ = "11.1.0"
 # When modifying remember to issue a new tag command in git before committing, then push the new tag
-#   git tag -a v11.0.0 -m "v11.0.0"
+#   git tag -a v11.1.0 -m "v11.1.0"
 #   git push origin master --tags
 """
 Python script that allows you to download TV shows off the Icelandic RÚV Sarpurinn website.
@@ -718,7 +718,7 @@ def createLocalFileName(show, include_original_title=False, use_plex_formatting=
          not formatted_showtime in sport_show_title  # Icelandic dates are usually on the form dd.mm.yyyy not yyyy.mm.dd
         ):
         sport_show_title = f"{sport_show_title} ({formatted_showtime})"
-      return f"{sanitizeFileName(show_title)}\\Season 01\\{sport_show_title}.mp4"
+      return f"{sanitizeFileName(show_title)}{sep}Season 01{sep}{sport_show_title}.mp4"
     elif( 'ep_num' in show and 'ep_total' in show and int(show['ep_total']) > 1):
       # This is an episode 
       # Plex formatting creates a local filename according to the rules defined here
