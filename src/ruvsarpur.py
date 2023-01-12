@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 # coding=utf-8
-__version__ = "10.2.0"
+__version__ = "11.0.0"
 # When modifying remember to issue a new tag command in git before committing, then push the new tag
-#   git tag -a v10.1.0 -m "v10.1.0"
+#   git tag -a v11.0.0 -m "v11.0.0"
 #   git push origin master --tags
 """
 Python script that allows you to download TV shows off the Icelandic RÚV Sarpurinn website.
@@ -99,14 +99,6 @@ RE_VOD_BASE_URL = re.compile(r'(?P<vodbase>.*)\/(?P<rest>.*\.m3u8)', re.IGNORECA
 
 RUV_URL = 'https://ruv-vod.akamaized.net'
 
-# All the categories that will be downloaded by VOD, the first number determines the graphql query to use, 
-# the second value the category name to use in the query.
-vod_types_and_categories = [  # Note that this corresponds to the top level list of pages available (Sjonvarp, Utvarp, Krakkaruv, Ungruv)
-  (1, 'tv'),
-  (2, 'krakkaruv'),
-  (2, 'ungruv')
-]
-             
 # Print console progress bar
 # http://stackoverflow.com/a/34325723
 def printProgress (iteration, total, prefix = '', suffix = '', decimals = 1, barLength = 100, color = True):
@@ -578,6 +570,8 @@ def parseArguments():
 
   parser.add_argument("--novideo", help="Disables downloading of video content, restricts behavior to only downloading metadata, posters and subtitles.", action="store_true")
 
+  #parser.add_argument("--preferenglishsubs", help="Prefers downloading entries that have burnt in English subtitles available. This is true for some special schedule items. By default this is off.", action="store_true")
+
   parser.add_argument("--ffmpeg",       help="Full path to the ffmpeg executable file", 
                                         type=str)
 
@@ -777,61 +771,56 @@ RE_CAPTURE_VOD_EPNUM_FROM_TITLE = re.compile(r'(?P<ep_num>\d+) af (?P<ep_total>\
 #
 # Downloads the full front page VOD schedule and for each episode in there fetches all available episodes
 # uses the new RUV GraphQL queries
-def getVodSchedule(panelType, categoryName):
+def getVodSchedule():
 
-  graphql_data = '?operationName=getFrontpage&variables={\"type\":\"'+categoryName+'\",\"limit\":600}&extensions={\"persistedQuery\":{\"version\":1,\"sha256Hash\":\"f640a5b54c853d6a071f7c3b27bf8c056854ab3200c1d35b0a624eb203dfc501\"}}'
-  data = requestsVodDataRetrieveWithRetries(graphql_data)
+  # Start with getting all the series available on RUV through their API, this gives us basic information about each of the series
+  # https://api.ruv.is/api/programs/tv/all
 
-  schedule = {}
-  if data is None or len(data) < 1:
+  # Now for each series we request the series information, to obtain more than the basic info, 
+  # note: today there is a single episode returned which cannot be used when dealing with multi episode series, we should request all episodes as a second call
+  # https://api.ruv.is/api/programs/get_ids/32978
+
+  ruv_api_url_all = 'https://api.ruv.is/api/programs/tv/all'
+  r = __create_retry_session().get(ruv_api_url_all)  
+  data = r.json()
+
+  schedule = {}  
+  if r.status_code != 200  or data is None or len(data) < 1:
     return schedule
   
-  if not data or not 'data' in data or not 'Featured' in data['data'] or not 'panels' in data['data']['Featured'] or len(data['data']['Featured']['panels']) <= 0:
+  if not data or len(data) <=0:
     return schedule
 
-  panels_iter_fields = data['data']['Featured']['panels']
-  panels = []
-  completed_programs = 0
-  total_programs = 0
-  for panel in panels_iter_fields:
-    total_programs += len(panel['programs'])
-    # We first want to handle the category panels and then all the other ones
-    # This is because the category type panels will have more processing done on them and we don't
-    # want additional flags such as is_movie to be overwritten when the dictionaries are merged down below
-    if 'type' in panel and 'category' in panel['type'] :
-      panels.insert(0,panel) # Insert at front of list and shift
-    else:
-      panels.append(panel) # Append at end of list
+  # Filter out all programs that do not have any vod files to download and have an id field
+  panels = [p for p in data if 'vod_available_episodes' in p and 'id' in p and p['vod_available_episodes'] > 0]
 
-  print("{0} | Total: {1} Series in {2}".format(color_title('Downloading VOD schedule'), total_programs, categoryName))
+  completed_programs = 0
+  total_programs = len(panels)
+  
+  print("{0} | Total: {1} series available".format(color_title('Downloading VOD schedule'), total_programs))
   printProgress(completed_programs, total_programs, prefix = 'Reading:', suffix = '', barLength = 25)
 
   # Now iterate first through every group and for every thing in the group request all episodes for that 
   # item (there is no programmatic way of distinguishing between how many episodes there are)
-  for panel in panels:
+  for program in panels:
 
     # Is the program a movie or an episode? Movies can also have multiple episodes (i.e. multi-part movies)
     # HEIMILDARMYNDIR, KVIKMYNDIR, ÁTT ÞÚ EFTIR AÐ SJÁ ÞESSAR?
     #isMovie = True if 'kvikmyndir' in panel['slug'] or 'att-thu-eftir-ad-sja-thessar' in panel['slug'] or 'heimildarmyndir' in panel['slug'] else False
-    isMovie = True if 'kvikmyndir' in panel['slug'] or 'att-thu-eftir-ad-sja-thessar' in panel['slug'] else False
-    isSport = True if 'ithrottir' in panel['slug'] else False
 
-    for program in panel['programs']:
-      completed_programs += 1
-      if program is None or not 'id' in program:
+    completed_programs += 1
+
+    # Add all details for the given program to the schedule
+    try:
+      # We want to not override existing items in the schedule dictionary in case they are downloaded again
+      program_schedule = getVodSeriesSchedule(program['id'], program)
+      # This joining of the two dictionaries below is necessary to ensure that 
+      # the existing items are not overwritten, therefore schedule is appended to the new list, existing items overwriting any new items.
+      schedule = dict(list(program_schedule.items()) + list(schedule.items())) 
+    except Exception as ex:
+        print( "Unable to retrieve schedule for VOD program '{0}', no episodes will be available for download from this program.".format(program['title']))
         continue
-
-      # Add all details for the given program to the schedule
-      try:
-        # We want to not override existing items in the schedule dictionary in case they are downloaded again
-        program_schedule = getVodSeriesSchedule(program['id'], program, isMovie, isSport)
-        # This joining of the two dictionaries below is necessary to ensure that 
-        # the existing items are not overwritten, therefore schedule is appended to the new list, existing items overwriting any new items.
-        schedule = dict(list(program_schedule.items()) + list(schedule.items())) 
-      except Exception as ex:
-          print( "Unable to retrieve schedule for VOD program '{0}', no episodes will be available for download from this program.".format(program['title']))
-          continue
-      printProgress(completed_programs, total_programs, prefix = 'Reading:', suffix ='', barLength = 25)
+    printProgress(completed_programs, total_programs, prefix = 'Reading:', suffix ='', barLength = 25)
 
   return schedule
 
@@ -875,25 +864,55 @@ def formatCoverArtResolutionMacro(rawsrc):
 # Given a series id and program data, downloads all 
 # episodes available for that series
 # isMovies parameter indicates if the programs belong to the list of known movie categories and should be treated as such
-def getVodSeriesSchedule(sid, incoming_program, isMovies, isSport):
+def getVodSeriesSchedule(sid, _):
+  schedule = {}  
+
+  # Perform two lookups, first to the API as this gives us a more complete information about the series, but unfortunately no episode data
+  ruv_api_url_sid = 'https://api.ruv.is/api/programs/get_ids/{0}'.format(sid)
+  r = __create_retry_session().get(ruv_api_url_sid)  
+  api_data = r.json()  
+  if r.status_code != 200 or api_data is None or not 'programs' in api_data or len(api_data['programs']) < 1:
+    return schedule
   
+  # Extract the series information from the response but clear out the episode info (as it is nonsense anyways and will be retrieved later)
+  prog = api_data['programs'][0]
+  prog['episodes'] = None
+  # Fix the image and portrait image fields as they come pre-formatted from the API
+  prog['image'] = prog['image'].replace('/480x/', '/$$IMAGESIZE$$x/') if 'image' in prog and not prog['image'] is None else None
+  prog['portrait_image'] = prog['portrait_image'].replace('/480x/', '/$$IMAGESIZE$$x/') if 'portrait_image' in prog and not prog['portrait_image'] is None else None
+  prog['description'] = ' '.join(prog['description']) if type(prog['description']) is list else prog['description'] # The API returns the description as a list, join all lines into a single string
+
+  # We flatten the categories out into only a list of the slugs so it is easier to match
+  prog['cat_slugs'] = []
+  prog['cat_names'] = []
+  for pcat in prog['categories']:
+    prog['cat_slugs'].append(pcat['slug'])
+    prog['cat_names'].append(pcat['title'])
+
+  # Check if the categories have known names
+  isMovie = True if 'heimildarmyndir' in prog['cat_slugs'] or 'kvikmyndir' in prog['cat_slugs'] else False
+  isDocumentary = True if 'heimildarmyndir' in prog['cat_slugs'] else False
+  isSport = True if 'ithrottir' in prog['cat_slugs'] else False
+  isEnglishSubtitlesEntry = True if 'with English subtitles' in prog['title'] else False
+  
+  # Second we query the graphql entry as well to retrieve all episodes available for the series_id
   graphdata = '?operationName=getEpisode&variables={"programID":'+str(sid)+'}&extensions={"persistedQuery":{"version":1,"sha256Hash":"f3f957a3a577be001eccf93a76cf2ae1b6d10c95e67305c56e4273279115bb93"}}'
   data = requestsVodDataRetrieveWithRetries(graphdata)
 
-  schedule = {}
   if data is None or len(data) < 1:
     return schedule
   
   if not data or not 'data' in data or not 'Program' in data['data'] or len(data['data']['Program']) <= 0:
     return schedule
 
-  prog = data['data']['Program']
+  # Extract the episode list, this is the only thing we are interested in
+  prog['episodes'] = data['data']['Program']['episodes']
 
   series_title = prog['title']
   series_description = prog['short_description']
   series_shortdescription = prog['description']
-  series_image = formatCoverArtResolutionMacro(prog['image'])
-  portrait_image = formatCoverArtResolutionMacro(incoming_program['portrait_image']) if 'portrait_image' in incoming_program else None
+  series_image = formatCoverArtResolutionMacro(prog['image']) if 'image' in prog else None
+  portrait_image = formatCoverArtResolutionMacro(prog['portrait_image']) if 'portrait_image' in prog else None
   foreign_title = prog['foreign_title']
   total_episodes = len(prog['episodes'])
 
@@ -917,18 +936,15 @@ def getVodSeriesSchedule(sid, incoming_program, isMovies, isSport):
     entry['desc'] = episode['description'] if 'duration' in episode and len(episode['description']) > 10 else prog['short_description']
     entry['original-title'] = foreign_title
 
-    entry['is_movie'] = isMovies
-    # If not movie then do a small trick to see if this flag is incorrect by checking the description text
-    if not isMovies and (
-       'kvikmynd ' in str(entry['desc']).lower() or 
-       'kvikmynd ' in str(series_description).lower() or 
-       'kvikmynd ' in str(series_shortdescription).lower() or
-       'heimildarmynd ' in str(series_shortdescription).lower() or
-       'heimildarmyndin ' in str(series_shortdescription).lower() or
-       'stuttmynd ' in str(series_shortdescription).lower() or
-       'stuttmyndin ' in str(series_shortdescription).lower()
-       ):
-      entry['is_movie'] = True
+    entry['is_movie'] = isMovie
+    entry['is_sport'] = isSport
+    entry['is_docu'] = isDocumentary
+
+    entry['english_subtitled'] = isEnglishSubtitlesEntry
+
+    entry['categories'] = prog['cat_names']
+    entry['multiple_episodes'] = prog['multiple_episodes']
+    entry['vod_available_episodes'] = prog['vod_available_episodes']
 
     entry['ep_num'] = str(episode['number']) if 'number' in episode else getGroup(RE_CAPTURE_VOD_EPNUM_FROM_TITLE, 'ep_num', episode['title'])
     if not entry['ep_num'] is None:
@@ -970,31 +986,9 @@ def getVodSeriesSchedule(sid, incoming_program, isMovies, isSport):
     if entry['ep_total'] is None and not episode['firstrun'] is None and len(episode['firstrun']) > 1:
       entry['title'] = '{0} ({1})'.format(entry['title'], episode['firstrun'])
 
-    entry['is_sport'] = isSport
-    if not isSport and (
-      'ólympíuleikarnir ' in      str(series_title).lower() or
-      'ólympíuleikar ' in      str(series_title).lower() or
-      'ólympíuleikum ' in      str(series_title).lower() or
-      'hm stofan' in      str(series_title).lower() or
-      'hm í ' in          str(series_title).lower() or
-      'em kvenna ' in     str(series_title).lower() or
-      'em karla ' in      str(series_title).lower() or
-      'bikarkeppni í ' in str(series_title).lower() or
-      'undankeppni hm' in str(series_title).lower() or
-      'undankeppni em' in str(series_title).lower() or
-      'íþróttir' ==       str(series_title).lower() or
-      ' í sundi' in       str(series_title).lower() or
-      ' í handbolta' in   str(series_title).lower() or
-      ' í fótbolta' in    str(series_title).lower() or
-      ' í körfubolta' in  str(series_title).lower() or
-      ' landsleikir í' in str(series_title).lower() or
-      ' landsleikur í' in str(series_title).lower()
-       ):
-       entry['is_sport'] = True
-
     # Special season handling for sporting events
     # Special title handling for sporting events
-    if entry['is_sport']:
+    if isSport:
       # Ensure that the year is in the title, because PLEX doesn't handle seasons that are longer than 3 digits, i.e. we cannot use 'Season 2022' there will just be garbage created, i.e. 'Season 230'
       if not str(entry['showtime'])[:4] in series_title:
         entry['series_title'] = series_title = f"{series_title} {str(entry['showtime'])[:4]}"
@@ -1053,12 +1047,12 @@ def runMain():
       schedule_was_refreshed = True
 
       # Downloading the full VOD available schedule as well
-      for typeValue, catName in vod_types_and_categories:
-        try:
-          schedule.update(getVodSchedule(typeValue, catName))
-        except Exception as ex:
-          print( "Unable to retrieve schedule for VOD category '{0}', no episodes will be available for download from this category.".format(catName))
-          continue
+      try:
+        schedule.update(getVodSchedule())
+      except Exception as ex:
+        print( "Unable to retrieve schedule for VOD category '{0}', no episodes will be available for download from this category.".format(catName))
+        print(ex)
+        exit(-1)
       
     # Save the tv schedule as the most current one, save it to ensure we format the today date
     if( schedule_was_refreshed and len(schedule) > 1 ):
