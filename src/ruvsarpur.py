@@ -38,22 +38,18 @@ from pathlib import Path # to check for file existence in the file system
 import json # To store and load the tv schedule that has already been downloaded
 import argparse # Command-line argument parser
 import requests # Downloading of data from HTTP
-import datetime, dateutil.relativedelta # Formatting of date objects and adjusting date ranges
-from xml.etree import ElementTree  # Parsing of TV schedule XML data
+import datetime # Formatting of date objects 
 from fuzzywuzzy import fuzz # For fuzzy string matching when trying to find programs by title or description
 from operator import itemgetter # For sorting the download list items https://docs.python.org/3/howto/sorting.html#operator-module-functions
 import ntpath # Used to extract file name from path for all platforms http://stackoverflow.com/a/8384788
 import glob # Used to do partial file path matching (when searching for already downloaded files) http://stackoverflow.com/a/2225582/779521
 import uuid # Used to generate a ternary backup local filename if everything else fails.
-from datetime import date # To generate the current year for sport seasons when no show time exists
 import platform  # To get information about if we are running on windows or not
 
 import urllib.request, urllib.parse # Downloading of data from URLs (used with the JSON parser)
 import requests # Downloading of data from HTTP
 from requests.adapters import HTTPAdapter # For Retrying
 from requests.packages.urllib3.util.retry import Retry # For Retrying
-import ssl
-import http.client as http_client
 
 import subprocess # To execute shell commands 
 
@@ -87,6 +83,8 @@ QUALITY_BITRATE = {
     "HD720"   : { 'code': "2400", 'bits': "2350000", 'chunk_size':2800000},
     "HD1080"  : { 'code': "3600", 'bits': "3550000", 'chunk_size':4000000}
 }
+
+MONTH_NAMES = ['', 'jan', 'feb', 'mar', 'apr', 'maí', 'jún', 'júl', 'ágú', 'sep', 'okt', 'nóv', 'des']
 
 # Parse the formats
 #   https://ruv-vod.akamaized.net/opid/5234383T0/3600/index.m3u8
@@ -426,7 +424,7 @@ def download_m3u8_playlist_using_ffmpeg(ffmpegexec, playlist_url, playlist_fragm
       ep_description = series_description
 
     if videoInfo['is_sport']:
-      ep_description = f"{ep_description.rstrip('.')}. Sýnt {str(videoInfo['showtime'])[8:10]}.{str(videoInfo['showtime'])[5:7]}.{str(videoInfo['showtime'])[:4]}"
+      ep_description = f"{ep_description.rstrip('.')}. Sýnt {str(videoInfo['showtime'])[8:10]}.{str(videoInfo['showtime'])[5:7]}.{str(videoInfo['showtime'])[:4]} kl.{(videoInfo['showtime'][11:16]).replace(':','.')}"
 
     prog_args.append("-metadata")
     prog_args.append("{0}={1}".format('title', sanitizeFileName(videoInfo['title'] if videoInfo['is_movie'] or videoInfo['is_sport'] else videoInfo['episode_title']) )) #The title of this video. (String)	
@@ -546,6 +544,8 @@ def parseArguments():
                                type=str) 
 
   parser.add_argument("--refresh", help="Refreshes the TV schedule data", action="store_true")
+
+  parser.add_argument("--incremental", help="Performs fast incremental intra-day refreshes. Setting this switch instructs the refresh mechanism to only download information for items that are new since the last full TV schedule refresh from the same day. This option has no effect and a full refresh is performed if the date of this refresh is newer than the latest refresh data. ", action="store_true")
 
   parser.add_argument("--plex", help="Creates Plex Media Server compatible file names and folder structures. See https://support.plex.tv/articles/naming-and-organizing-your-tv-show-files/", action="store_true")
 
@@ -718,7 +718,7 @@ def createLocalFileName(show, include_original_title=False, use_plex_formatting=
          not formatted_showtime in sport_show_title  # Icelandic dates are usually on the form dd.mm.yyyy not yyyy.mm.dd
         ):
         sport_show_title = f"{sport_show_title} ({formatted_showtime})"
-      return f"{sanitizeFileName(show_title)}{sep}Season 01{sep}{sport_show_title}.mp4"
+      return f"{sanitizeFileName(show_title)}{sep}Season 01{sep}{sport_show_title.replace(':','.')}.mp4"
     elif( 'ep_num' in show and 'ep_total' in show and int(show['ep_total']) > 1):
       # This is an episode 
       # Plex formatting creates a local filename according to the rules defined here
@@ -772,7 +772,7 @@ RE_CAPTURE_VOD_EPNUM_FROM_TITLE = re.compile(r'(?P<ep_num>\d+) af (?P<ep_total>\
 #
 # Downloads the full front page VOD schedule and for each episode in there fetches all available episodes
 # uses the new RUV GraphQL queries
-def getVodSchedule():
+def getVodSchedule(existing_schedule, args_incremental_refresh=False):
 
   # Start with getting all the series available on RUV through their API, this gives us basic information about each of the series
   # https://api.ruv.is/api/programs/tv/all
@@ -786,6 +786,11 @@ def getVodSchedule():
   data = r.json()
 
   schedule = {}  
+
+  # If we are dealing with incremental refresh then start by storing our existing schedule
+  if args_incremental_refresh:
+    schedule = existing_schedule
+
   if r.status_code != 200  or data is None or len(data) < 1:
     return schedule
   
@@ -804,12 +809,17 @@ def getVodSchedule():
   # Now iterate first through every group and for every thing in the group request all episodes for that 
   # item (there is no programmatic way of distinguishing between how many episodes there are)
   for program in panels:
-
-    # Is the program a movie or an episode? Movies can also have multiple episodes (i.e. multi-part movies)
-    # HEIMILDARMYNDIR, KVIKMYNDIR, ÁTT ÞÚ EFTIR AÐ SJÁ ÞESSAR?
-    #isMovie = True if 'kvikmyndir' in panel['slug'] or 'att-thu-eftir-ad-sja-thessar' in panel['slug'] or 'heimildarmyndir' in panel['slug'] else False
-
     completed_programs += 1
+
+    # If incremental, then check if we already have this series if we don't we want to add it, 
+    # if we have the series check if the vod_available_episodes match if not then we want to re-add it
+    if args_incremental_refresh:
+      existing_vod_episodes_count = sum(type(schedule[p]) is dict and schedule[p]['sid'] == str(program['id']) for p in schedule)
+      if( program['vod_available_episodes'] <= existing_vod_episodes_count and existing_vod_episodes_count > 0 ):
+        continue
+      else:
+        existing_vs_new_diff = program['vod_available_episodes'] - existing_vod_episodes_count
+        printProgress(completed_programs, total_programs, prefix = 'Detected {0} new entries for {1}:'.format(existing_vs_new_diff, color_sid(program['title'])), suffix ='', barLength = 25)
 
     # Add all details for the given program to the schedule
     try:
@@ -817,9 +827,11 @@ def getVodSchedule():
       program_schedule = getVodSeriesSchedule(program['id'], program)
       # This joining of the two dictionaries below is necessary to ensure that 
       # the existing items are not overwritten, therefore schedule is appended to the new list, existing items overwriting any new items.
-      schedule = dict(list(program_schedule.items()) + list(schedule.items())) 
+      #schedule = dict(list(program_schedule.items()) + list(schedule.items())) 
+      schedule.update(program_schedule) # Want to override existing keys again!
     except Exception as ex:
         print( "Unable to retrieve schedule for VOD program '{0}', no episodes will be available for download from this program.".format(program['title']))
+        print( ex )
         continue
     printProgress(completed_programs, total_programs, prefix = 'Reading:', suffix ='', barLength = 25)
 
@@ -991,11 +1003,15 @@ def getVodSeriesSchedule(sid, _):
     # Special title handling for sporting events
     if isSport:
       # Ensure that the year is in the title, because PLEX doesn't handle seasons that are longer than 3 digits, i.e. we cannot use 'Season 2022' there will just be garbage created, i.e. 'Season 230'
-      if not str(entry['showtime'])[:4] in series_title:
-        entry['series_title'] = series_title = f"{series_title} {str(entry['showtime'])[:4]}"
+      if not str(entry['showtime'])[:4] in entry['series_title']:
+        entry['series_title'] = f"{series_title} {str(entry['showtime'])[:4]}"
 
-      # Add the subtitle into the final title of the episode, i.e. to include dates or the teams playing
-      entry['title'] = '{0} ({1})'.format(entry['series_title'], entry['episode_title'])
+      # If the episode name is the date then we only append the timeportion
+      if( entry['episode_title'] == f"{str(entry['showtime'])[8:10]}.{str(entry['showtime'])[5:7]}.{str(entry['showtime'])[:4]}"):
+        entry['title'] = f"{entry['series_title']} ({entry['episode_title']}) kl.{(str(entry['showtime'])[11:16]).replace(':','.')}"  
+      else: # we add the date as well
+        # Add the subtitle into the final title of the episode, i.e. to include dates or the teams playing, use the full show time at the end with the HH:mm
+        entry['title'] = f"{entry['series_title']} ({entry['episode_title']}) {str(entry['showtime'])[8:10]}.{str(MONTH_NAMES[int(entry['showtime'][5:7])])} kl.{(str(entry['showtime'])[11:16]).replace(':','.')}"
 
       # We cannot use seasons numbers that are longer than 999 as there are only three digits allowed for season numbers
       #entry['season_num'] = entry['showtime'][:4] if 'showtime' in entry and not entry['showtime'] is None and len(entry['showtime']) > 4 else str(date.today().year)
@@ -1040,20 +1056,18 @@ def runMain():
     schedule_was_refreshed = False
 
     # Get an existing tv schedule if possible
-    if( not args.refresh ):
-      schedule = getExistingTvSchedule(tv_schedule_file_name)
+    schedule = getExistingTvSchedule(tv_schedule_file_name)
     
-    if( args.refresh or schedule is None or schedule['date'].date() < today ):
-      schedule = {}
+    if( args.refresh or schedule is None  ):
       schedule_was_refreshed = True
 
-      # Downloading the full VOD available schedule as well
-      try:
-        schedule.update(getVodSchedule())
-      except Exception as ex:
-        print( "Unable to retrieve schedule for VOD category '{0}', no episodes will be available for download from this category.".format(catName))
-        print(ex)
-        exit(-1)
+      # Only clear out the schedule if we are not dealing with an incremental update
+      # or if the dates don't match anymore 
+      if not args.incremental or schedule['date'].date() < today:
+        schedule = {}
+      
+      # Downloading the full VOD available schedule as well, signal an incremental update if the schedule object has entries in it
+      schedule = getVodSchedule(schedule, len(schedule) > 0)
       
     # Save the tv schedule as the most current one, save it to ensure we format the today date
     if( schedule_was_refreshed and len(schedule) > 1 ):
