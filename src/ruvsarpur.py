@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 # coding=utf-8
-__version__ = "11.1.0"
+__version__ = "11.2.0"
 # When modifying remember to issue a new tag command in git before committing, then push the new tag
-#   git tag -a v11.1.0 -m "v11.1.0"
+#   git tag -a v11.2.0 -m "v11.2.0"
 #   git push origin master --tags
 """
 Python script that allows you to download TV shows off the Icelandic RÚV Sarpurinn website.
@@ -881,15 +881,13 @@ def getVodSeriesSchedule(sid, _):
   schedule = {}  
 
   # Perform two lookups, first to the API as this gives us a more complete information about the series, but unfortunately no episode data
-  ruv_api_url_sid = 'https://api.ruv.is/api/programs/get_ids/{0}'.format(sid)
+  ruv_api_url_sid = 'https://api.ruv.is/api/programs/program/{0}/all'.format(sid)
+
   r = __create_retry_session().get(ruv_api_url_sid)  
-  api_data = r.json()  
-  if r.status_code != 200 or api_data is None or not 'programs' in api_data or len(api_data['programs']) < 1:
+  prog = r.json()  
+  if r.status_code != 200 or prog is None or not 'episodes' in prog or len(prog['episodes']) < 1:
     return schedule
   
-  # Extract the series information from the response but clear out the episode info (as it is nonsense anyways and will be retrieved later)
-  prog = api_data['programs'][0]
-  prog['episodes'] = None
   # Fix the image and portrait image fields as they come pre-formatted from the API
   prog['image'] = prog['image'].replace('/480x/', '/$$IMAGESIZE$$x/') if 'image' in prog and not prog['image'] is None else None
   prog['portrait_image'] = prog['portrait_image'].replace('/480x/', '/$$IMAGESIZE$$x/') if 'portrait_image' in prog and not prog['portrait_image'] is None else None
@@ -907,19 +905,6 @@ def getVodSeriesSchedule(sid, _):
   isDocumentary = True if 'heimildarmyndir' in prog['cat_slugs'] else False
   isSport = True if 'ithrottir' in prog['cat_slugs'] else False
   isEnglishSubtitlesEntry = True if 'with English subtitles' in prog['title'] else False
-  
-  # Second we query the graphql entry as well to retrieve all episodes available for the series_id
-  graphdata = '?operationName=getEpisode&variables={"programID":'+str(sid)+'}&extensions={"persistedQuery":{"version":1,"sha256Hash":"f3f957a3a577be001eccf93a76cf2ae1b6d10c95e67305c56e4273279115bb93"}}'
-  data = requestsVodDataRetrieveWithRetries(graphdata)
-
-  if data is None or len(data) < 1:
-    return schedule
-  
-  if not data or not 'data' in data or not 'Program' in data['data'] or len(data['data']['Program']) <= 0:
-    return schedule
-
-  # Extract the episode list, this is the only thing we are interested in
-  prog['episodes'] = data['data']['Program']['episodes']
 
   series_title = prog['title']
   series_description = prog['short_description']
@@ -938,6 +923,9 @@ def getVodSeriesSchedule(sid, _):
     entry['series_image'] = series_image
     entry['portrait_image'] = portrait_image
 
+    # Fix the episode description if needed
+    episode['description'] = ' '.join(episode['description']) if type(episode['description']) is list else episode['description']
+
     entry['episode'] = episode
     entry['episode_title'] = episode['title']
     entry['episode_image'] = formatCoverArtResolutionMacro(episode['image'])
@@ -945,9 +933,28 @@ def getVodSeriesSchedule(sid, _):
     entry['pid'] = str(episode['id'])
     entry['showtime'] = episode['firstrun']
     entry['duration'] = str(episode['duration']) if 'duration' in episode else ''
+    entry['duration_friendly'] = episode['duration_friendly']
     entry['sid'] = str(sid)
-    entry['desc'] = episode['description'] if 'duration' in episode and len(episode['description']) > 10 else prog['short_description']
+
+    entry['desc'] = episode['description'] if 'description' in episode and len(episode['description']) > 10 else prog['short_description']
     entry['original-title'] = foreign_title
+
+    # The file
+    entry['file'] = episode['file']
+
+    # Must format subtitles differently
+    entry['subtitles_url'] = episode['subtitles_url']
+    entry['subtitles'] = []
+    for name in episode['subtitles']:
+      if not episode['subtitles'][name] is None:
+        entry['subtitles'].append({
+          'name': name,
+          'value': episode['subtitles'][name]
+        })
+
+    entry['eventid'] = episode['event']
+    entry['rating'] = episode['rating']
+    entry['slug'] = episode['slug']
 
     entry['is_movie'] = isMovie
     entry['is_sport'] = isSport
@@ -989,6 +996,8 @@ def getVodSeriesSchedule(sid, _):
       entry['season_num'] = '8'
     elif str(series_title).endswith(' IX') or str(foreign_title).endswith(' IX') or 'níunda þáttaröð' in str(entry['desc']).lower():
       entry['season_num'] = '9'
+    elif str(series_title).endswith(' XX') or str(foreign_title).endswith(' XX') or 'tíunda þáttaröð' in str(entry['desc']).lower():
+      entry['season_num'] = '10'
 
     # Create the episode numbers programatically to ensure consistency if we're dealing with multi-episode program
     if not entry['ep_total'] is None and int(entry['ep_total']) > 1:
@@ -1014,7 +1023,7 @@ def getVodSeriesSchedule(sid, _):
         entry['title'] = f"{entry['series_title']} ({entry['episode_title']}) {str(entry['showtime'])[8:10]}.{str(MONTH_NAMES[int(entry['showtime'][5:7])])} kl.{(str(entry['showtime'])[11:16]).replace(':','.')}"
 
       # We cannot use seasons numbers that are longer than 999 as there are only three digits allowed for season numbers
-      #entry['season_num'] = entry['showtime'][:4] if 'showtime' in entry and not entry['showtime'] is None and len(entry['showtime']) > 4 else str(date.today().year)
+      entry['sport_season'] = entry['showtime'][:4] if 'showtime' in entry and not entry['showtime'] is None and len(entry['showtime']) > 4 else str(date.today().year)
 
     schedule[entry['pid']] = entry
 
@@ -1155,24 +1164,29 @@ def runMain():
         Path(local_filename).parent.mkdir(parents=True, exist_ok=True)
 
       #############################################
-      # First download the URL for the listing
-      ep_graphdata = '?operationName=getProgramType&variables={"id":'+str(item['sid'])+',"episodeId":["'+str(item['pid'])+'"]}&extensions={"persistedQuery":{"version":1,"sha256Hash":"9d18a07f82fcd469ad52c0656f47fb8e711dc2436983b53754e0c09bad61ca29"}}'
-      data = requestsVodDataRetrieveWithRetries(ep_graphdata)     
-      if data is None or len(data) < 1:
-        print("Error: Could not retrieve episode download url, unable to download VOD details, skipping "+item['title'])
-        continue
-      
-      if not data or not 'data' in data or not 'Program' in data['data'] or not 'episodes' in data['data']['Program'] or len(data['data']['Program']['episodes']) < 1:
-        print("Error: Could not retrieve episode download url, VOD did not return any data, skipping "+item['title'])
-        continue
+      # First download the URL for the listing if needed
+      if not 'file' in item or item['file'] is None or len(item['file']) < 1 or not str(item['file']).startswith(RUV_URL):
+        ep_graphdata = '?operationName=getProgramType&variables={"id":'+str(item['sid'])+',"episodeId":["'+str(item['pid'])+'"]}&extensions={"persistedQuery":{"version":1,"sha256Hash":"9d18a07f82fcd469ad52c0656f47fb8e711dc2436983b53754e0c09bad61ca29"}}'
+        data = requestsVodDataRetrieveWithRetries(ep_graphdata)     
+        if data is None or len(data) < 1:
+          print("Error: Could not retrieve episode download url, unable to download VOD details, skipping "+item['title'])
+          continue
+        
+        if not data or not 'data' in data or not 'Program' in data['data'] or not 'episodes' in data['data']['Program'] or len(data['data']['Program']['episodes']) < 1:
+          print("Error: Could not retrieve episode download url, VOD did not return any data, skipping "+item['title'])
+          continue
 
-      try:
         ep_data = data['data']['Program']['episodes'][0] # First and only item
         vod_url_full = ep_data['file']
+      else:
+        vod_url_full = item['file']
+
+      try:
         item['vod_url_full'] = vod_url_full
 
         # Store any references to subtitle files if available
-        subtitles = ep_data['subtitles'] if 'subtitles' in ep_data else None
+        if not 'subtitles' in item and item['subtitles'] is None:
+          item['subtitles'] = ep_data['subtitles'] if 'subtitles' in ep_data else None
 
         # If no VOD code can be found then this cannot be downloaded
         if vod_url_full is None:
@@ -1242,9 +1256,9 @@ def runMain():
           downloadTVShowPoster(local_filename, display_title, item, Path(args.output))
 
       # Attempt to download any subtitles if available 
-      if not subtitles is None and len(subtitles) > 0:
+      if not item['subtitles'] is None and len(item['subtitles']) > 0:
         try:
-          downloadSubtitlesFiles(subtitles, local_filename, display_title, item)
+          downloadSubtitlesFiles(item['subtitles'], local_filename, display_title, item)
         except ex:
           print("Error: Could not download subtitle files for item, "+item['title'])
           continue
