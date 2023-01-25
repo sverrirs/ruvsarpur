@@ -865,7 +865,8 @@ def getVodSchedule(existing_schedule, args_incremental_refresh=False):
     return schedule
 
   # Filter out all programs that do not have any vod files to download and have an id field
-  panels = [p for p in data if 'vod_available_episodes' in p and 'id' in p and p['vod_available_episodes'] > 0]
+  #panels = [p for p in data if 'vod_available_episodes' in p and 'id' in p and p['vod_available_episodes'] > 0]
+  panels = [p for p in data if 'web_available_episodes' in p and 'id' in p and p['web_available_episodes'] > 0]
 
   completed_programs = 0
   total_programs = len(panels)
