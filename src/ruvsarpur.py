@@ -755,7 +755,7 @@ def createLocalFileName(show, include_original_title=False, use_plex_formatting=
     imdb_id_part = ''
     imdb_year_part = ''
 
-    if 'imdb' in show and 'id' in show['imdb'] and len(show['imdb']['id']) > 0:
+    if 'imdb' in show and not show['imdb'] is None and 'id' in show['imdb'] and len(show['imdb']['id']) > 0:
       imdb = show['imdb']
       # Enrich the format if a match is found
       imdb_id_part = f" {{imdb-{imdb['id']}}}" if not imdb['id'] is None else ''
