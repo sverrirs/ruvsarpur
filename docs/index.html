@@ -204,35 +204,15 @@ When this switch is specified the script will check to see if the video file exi
 
 <h1><a id="user-content-advanced-uses" class="anchor" href="#advanced-uses" aria-hidden="true"></a>Advanced uses</h1>
 
-<p>Using <code>--category</code> argument allows you to filter the tv schedule by category. For example to list only childrens tv shows use the category number 1</p>
+<p>The <code>--days</code> argument can be used to filter the list by only listing shows added in the past <em>N</em> number of days. For example, to list only shows that were added in the past day use:</p>
 
-<div class="code">python ruvsarpur.py --list --category 1
-</div>
-
-<p>The available categories are:</p>
-
-<div class="code">
-1='Börn'<br>
-2='Framhaldsþættir'<br>
-3='Fréttatengt'<br>
-4='Fræðsla'<br>
-5='Íþróttir'<br>
-6='Íslenskir þættir'<br>
-7='Kvikmyndir'<br>
-9='Tónlist'<br>
-13='Samfélag'<br>
-17='Menning'
-</div>
-
-<p>The <code>--days</code> argument can be used to filter the list by only listing shows added in the past <em>N</em> number of days. For example, to list only children's shows that were added in the past day use:</p>
-
-<div class="code">python ruvsarpur.py --list --category 1 --days 1
+<div class="code">python ruvsarpur.py --list --days 1
 </div>
 
 
-<p>The the <code>--new</code> flag limits the search and downloads to only new shows (e.g. shows that have just aired their first episode in a new multi-episode series). The example below will only list new children's shows on the TV schedule.</p> 
+<p>The the <code>--new</code> flag limits the search and downloads to only new shows (e.g. shows that have just aired their first episode in a new multi-episode series). The example below will only list new shows on the TV schedule.</p> 
 
-<div class="code">python ruvsarpur.py --list --category 1 --new
+<div class="code">python ruvsarpur.py --list --new
 </div>
 
 <p>The <code>--keeppartial</code> flag can be used to keep partially downloaded files in case of errors, if omitted then the script deletes any incomplete partially downloaded files if an error occurs (this is the default behavior).</p>

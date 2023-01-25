@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 # coding=utf-8
-__version__ = "11.2.0"
+__version__ = "11.3.0"
 # When modifying remember to issue a new tag command in git before committing, then push the new tag
-#   git tag -a v11.2.0 -m "v11.2.0"
+#   git tag -a v11.3.0 -m "v11.3.0"
 #   git push origin master --tags
 """
 Python script that allows you to download TV shows off the Icelandic RÚV Sarpurinn website.
@@ -142,26 +142,57 @@ def printProgress (iteration, total, prefix = '', suffix = '', decimals = 1, bar
 #           "imageUrl": "https://m.media-amazon.com/images/M/MV5BODljM2M4NDItZjZkZi00MTZkLTljMjEtMWE1NGU5NDJjMGVhL2ltYWdlL2ltYWdlXkEyXkFqcGdeQXVyMTMxODk2OTU@._V1_.jpg",
 #           "width": 675
 #            },
-#      "id": "tt4048272",     # <= IMDB ID
+#      "id": "tt0310793",     # <= IMDB ID
 #      "l": "Toni Erdmann",   # <= The movie title
 #      "q": "feature",        # <= type of resource, one of [feature, TV series, video, short, TV short], might be missing, example: https://v2.sg.media-imdb.com/suggestion/b/blade%20runner.json
 #      "qid": "movie",        # <= slugified version of the "q" result
 #      "rank": 11288,         # <= Result relevance ranking, sorted in ascending order
 #      "s": "Sandra Hüller, Peter Simonischek",    # <= Main actors
 #      "y": 2016              # <= Year released
+#      "v": [                 # <= List of trailers/teasers/videos applicable for the item
+#              {
+#                "i": {
+#                  "height": 360,
+#                  "imageUrl": "https://m.media-amazon.com/images/M/MV5BNDQ5MTU4MDQtOTdkNS00NWQwLWE5ODMtZWQ4Y2QwYzIzMDE0XkEyXkFqcGdeQXVyNzU1NzE3NTg@._V1_.jpg",
+#                  "width": 480
+#                },
+#                "id": "vi2814050585",        # <= use this with "https://www.imdb.com/video/vi2814050585?playlistId=tt0310793"
+#                "l": "Bowling for Columbine",
+#                "s": "2:07"
+#              }
+#            ],
 #}
-def lookupMovieInIMDB(movie_title, movie_year):
-  if movie_title is None or len(movie_title) < 1:
+def lookupItemInIMDB(item_title, item_year, item_type, sample_duration_sec, total_episode_num, isIcelandic):
+  if item_title is None or len(item_title) < 1:
     return None
-  
-  first_character_in_title = movie_title[0]
-  url_encoded_title = urllib.parse.quote(movie_title)
 
-  imdb_url = f"https://v2.sg.media-imdb.com/suggestion/{first_character_in_title}/{url_encoded_title}.json"
+  # Determine the feature type to favor
+  imdb_item_types = ['feature'] # Default
+
+  # According to the oscars website > A short film is defined as an original motion picture that has a running time of 40 minutes or less, including all credits.
+  # We use 45min as a safety buffer as there can be filler content before and after the films official length on the VOD.
+  if item_type == 'movie':
+    imdb_item_types = ['short'] if sample_duration_sec > 0 and sample_duration_sec < 2700 else ['feature', 'tv movie']
+  elif item_type == 'documentary':
+    imdb_item_types = ['short'] if sample_duration_sec > 0 and sample_duration_sec < 2700 else ['feature', 'tv special']
+  elif item_type == 'tvshow':
+    # We should distinguis between multi season series and mini series, 
+    # One definition > Limited series last longer, usually between 6 and 12 episodes, while a miniseries is typically 4-6 episodes, sometimes broadcast in blocks of two to create more of an event for the viewer.
+    #   > A miniseries always has a predetermined number of episodes while a series is developed to continue for several seasons.
+    imdb_item_types = ['mini-series', 'tv mini-series'] if total_episode_num > 1 and total_episode_num <= 6 else ['tv series']
   
-  r = __create_retry_session().get(imdb_url)  
-  # If the status is not success then terminate
-  if( r.status_code != 200 ):
+  try:
+    first_character_in_title = item_title[0]
+    url_encoded_title = urllib.parse.quote(item_title)
+
+    imdb_url = f"https://v2.sg.media-imdb.com/suggestion/{first_character_in_title}/{url_encoded_title}.json?includeVideos=1"
+
+    r = __create_retry_session().get(imdb_url)  
+    # If the status is not success then terminate
+    if( r.status_code != 200 ):
+      return None
+  except:
+    # If we have a failure in the IMDB api we do not want to fail RUV, just silently ignore this
     return None
 
   data = r.json()
@@ -170,22 +201,48 @@ def lookupMovieInIMDB(movie_title, movie_year):
   if not 'd' in data or data['d'] is None or len(data['d']) < 1:
     return None
 
-  # Limit the list to the first three matches, it is unlikely that a good match is available in the response outside of the first three
-  matches = data['d'][0:3]
+  # We remove all matches that do not have a covery photo, unlikely that it is going to be a great match
+  # also remove matches that do not have any actors starring in it
+  matches = [obj for obj in data['d'] if 'i' in obj and 's' in obj and len(obj['s']) > 2]
+  num_matches = len(matches)
+  if num_matches <= 0:
+    return None
 
   result = None
-  num_features = sum(('q' in obj and ('feature' in obj['q'] or 'short' in obj['q'])) for obj in matches)
+  num_type_matches = sum(('q' in obj and str(obj['q']).lower() in imdb_item_types) for obj in matches)
+  num_exact_name_matches = sum(('l' in obj and item_title.lower() == obj['l'].lower()) for obj in matches)
+  num_fuzzy_name_matches = sum(('l' in obj and fuzz.partial_ratio( item_title, obj['l'] ) > 85) for obj in matches)
+  found_via = "Nothing"
 
-  # If we have multiple feature results then we use the year to deduplicate and then find the first match that is both a movie and has a year matching
-  if num_features > 1 and not movie_year is None:
-    result = next((obj for obj in matches if 'q' in obj and ('feature' in obj['q'] or 'short' in obj['q']) and 'y' in obj and movie_year in str(obj['y'])), None)
-  
-  # If we either only have a single feature or if we couldn't find a match using the year
-  # The year can be wrong from the RUV content unfortunately
-  if num_features == 1 or result is None:
-    # If we have only one feature result we pick the first available ignoring the year, this will mostly be correct
-    result = next((obj for obj in matches if 'q' in obj and ('feature' in obj['q'] or 'short' in obj['q'])), None)
-    
+  # If there is an single exact name match, we pick that
+  if num_exact_name_matches == 1:
+    result = next((obj for obj in matches if 'l' in obj and item_title.lower() == obj['l'].lower()), None)
+    found_via = "Exact Name"
+
+  # Special case for icelandic movies, they are extremly likely to be the first result if searched by the icelandic name
+  if isIcelandic and item_type == 'movie':
+    result = matches[0]
+    found_via = "First match (Icelandic Movie)"
+
+  # If there is a single slightly fuzzy name match, we pick that
+  if result is None and num_fuzzy_name_matches == 1:
+    result = next((obj for obj in matches if 'l' in obj and fuzz.partial_ratio( item_title, obj['l'] ) > 85), None)
+    found_via = "Similar name, single match"
+
+  # Attempt to find a match in the list with a similar name and type
+  if result is None:
+    result = next((obj for obj in matches if 'l' in obj and fuzz.partial_ratio( item_title, obj['l'] ) > 75 and 'q' in obj and str(obj['q']).lower() in imdb_item_types), None)
+    found_via = "Similar name and type, first match"
+
+  # Still no match, attempt to find one with a matching year if it is specified
+  if result is None and not item_year is None: 
+    result = next((obj for obj in matches if 'q' in obj and str(obj['q']).lower() in imdb_item_types and 'y' in obj and item_year in str(obj['y'])), None)
+    found_via = "Same type and year, first match"
+
+  # If there is only a single element in the list then it is likely to be it, for Icelandic movies this is very often the case
+  if result is None and num_matches == 1:
+    result = next((obj for obj in matches if 'q' in obj and str(obj['q']).lower() in imdb_item_types), None)
+    found_via = "Only result"
 
   # If not a movie or short film then exit
   if result is None:
@@ -195,12 +252,23 @@ def lookupMovieInIMDB(movie_title, movie_year):
   if not 'id' in result or result['id'] is None:
     return None
 
-  return {
-    "id": result['id'] if 'y' in result else None,
-    "title": result['l'] if 'y' in result else None,
-    "actors": result['s'] if 'y' in result else None,
+  ret_obj = {
+    "id": result['id'] if 'id' in result else None,
+    "title": result['l'] if 'l' in result else None,
+    "actors": result['s'] if 's' in result else None,
     "year": result['y'] if 'y' in result else None,
+    "image" : result['i']['imageUrl'] if 'i' in result and 'imageUrl' in result['i'] else None,
+    "foundvia": found_via
   }
+
+  if 'v' in result and type(result['v']) is list and len(result['v']) > 0 and "id" in result["v"][0]:
+    ret_obj["video"] = {
+                          "id": result["v"][0]["id"],
+                          "title": result["v"][0]["l"] if "l" in result["v"][0] else None,
+                          "length": result["v"][0]["s"] if "s" in result["v"][0] else None
+                        }
+
+  return ret_obj
 
 # Downloads the image poster for a movie
 # See naming guidelines: https://support.plex.tv/articles/200220677-local-media-assets-movies/#toc-2
@@ -412,7 +480,7 @@ def download_m3u8_playlist_using_ffmpeg(ffmpegexec, playlist_url, playlist_fragm
       series_description = videoInfo['series_sdesc']
 
     # Description for movies, we want the longer version of
-    if videoInfo['is_movie']:
+    if videoInfo['is_movie'] or videoInfo['is_docu']:
       ep_description = series_description
     
     # Description for epsiodic content (do not use the series description)
@@ -427,18 +495,23 @@ def download_m3u8_playlist_using_ffmpeg(ffmpegexec, playlist_url, playlist_fragm
       ep_description = f"{ep_description.rstrip('.')}. Sýnt {str(videoInfo['showtime'])[8:10]}.{str(videoInfo['showtime'])[5:7]}.{str(videoInfo['showtime'])[:4]} kl.{(videoInfo['showtime'][11:16]).replace(':','.')}"
 
     prog_args.append("-metadata")
-    prog_args.append("{0}={1}".format('title', sanitizeFileName(videoInfo['title'] if videoInfo['is_movie'] or videoInfo['is_sport'] else videoInfo['episode_title']) )) #The title of this video. (String)	
+    prog_args.append("{0}={1}".format('title', sanitizeFileName(videoInfo['title'] if videoInfo['is_movie'] or videoInfo['is_docu'] or videoInfo['is_sport'] else videoInfo['episode_title']) )) #The title of this video. (String)	
     prog_args.append("-metadata")
     #prog_args.append("{0}={1}".format('comment', sanitizeFileName(videoInfo['desc']) ))  #A (content) description of this video.
     prog_args.append("{0}={1}".format('comment', 'ruvinfo:{0}:{1}'.format(str(videoInfo['pid']), str(videoInfo['sid']))))  #The program id and series id for the video, prefixed with ruvinfo for easier parsing
     prog_args.append("-metadata")
     prog_args.append("{0}={1}".format('synopsis', sanitizeFileName(ep_description) ))  #A synopsis, a longer description of this video
 
-    if not videoInfo['is_movie'] or videoInfo['is_sport']:
+    if (not videoInfo['is_movie'] and not videoInfo['is_docu']) or videoInfo['is_sport']:
       prog_args.append("-metadata")
       prog_args.append("{0}={1}".format('show', sanitizeFileName(videoInfo['series_title']) )) #The name of the TV show,
 
-    if not videoInfo['is_movie']:
+    if videoInfo['is_movie'] or videoInfo['is_docu'] and 'imdb' in videoInfo and not videoInfo['imdb'] is None:
+      if 'year' in videoInfo['imdb'] and not videoInfo['imdb']['year'] is None:
+        prog_args.append("-metadata")
+        prog_args.append("{0}={1}".format('date', videoInfo['imdb']['year'] )) # The year of the movie or documentary as reported by IMDB
+
+    if not videoInfo['is_movie'] and not videoInfo['is_docu']:
       prog_args.append("-metadata")
       prog_args.append("{0}={1}".format('episode_id', videoInfo['ep_num']))  #Either the episode name or episode number, for display.
       prog_args.append("-metadata")
@@ -447,7 +520,7 @@ def download_m3u8_playlist_using_ffmpeg(ffmpegexec, playlist_url, playlist_fragm
       prog_args.append("{0}={1}".format('season_number', int(videoInfo['season_num'])))  #The season number, in the range of 0 to 255 only
 
     prog_args.append("-metadata")
-    prog_args.append("{0}={1}".format('media_type', "Movie" if videoInfo['is_movie'] else 'Sports' if videoInfo['is_sport'] else "TV Show"))  #The genre this video belongs to. (String)	
+    prog_args.append("{0}={1}".format('media_type', "Movie" if videoInfo['is_movie'] or videoInfo['is_docu'] else 'Sports' if videoInfo['is_sport'] else "TV Show"))  #The genre this video belongs to. (String)	
 
     # Add the RUV specific identifier metadata, this can be used by other tooling to identify the entry
     # Note: These tags get dropped by ffmpeg unless the use_metadata_tag switch is used, but when that is used the 
@@ -679,22 +752,16 @@ def createLocalFileName(show, include_original_title=False, use_plex_formatting=
     original_title = ' ({0})'.format(sanitizeFileName(show['original-title'])) if 'original-title' in show and not show['original-title'] is None else ""
     series_title = show['series_title']
 
-    if 'is_movie' in show and show['is_movie'] is True: 
-      # Attempt to extract the year of the movie
-      movie_year = getGroup(RE_CAPTURE_YEAR_FROM_DESCRIPTION, 'year', show['series_sdesc'])
-      imdb_id_part = ''
-      imdb_year_part = ''
+    imdb_id_part = ''
+    imdb_year_part = ''
 
-      # Check imdb for a match, first try original title, then series title
-      imdb = lookupMovieInIMDB(show['original-title'], movie_year)
-      if imdb is None: 
-        imdb = lookupMovieInIMDB(series_title, movie_year)
-      
-      if not imdb is None:
-        # Enrich the format if a match is found
-        imdb_id_part = f" {{imdb-{imdb['id']}}}" if not imdb['id'] is None else ''
-        imdb_year_part = f" ({imdb['year']})" if not imdb['year'] is None else ''
+    if 'imdb' in show and 'id' in show['imdb'] and len(show['imdb']['id']) > 0:
+      imdb = show['imdb']
+      # Enrich the format if a match is found
+      imdb_id_part = f" {{imdb-{imdb['id']}}}" if not imdb['id'] is None else ''
+      imdb_year_part = f" ({imdb['year']})" if not imdb['year'] is None else ''
 
+    if ('is_movie' in show and show['is_movie'] is True) or ('is_docu' in show and show['is_docu'] is True): 
       # Dealing with a movie for sure, it may be episodic and therefore should use the "partX" notation
       # described here: https://support.plex.tv/articles/naming-and-organizing-your-movie-media-files/#toc-3
       # Examples:
@@ -728,9 +795,9 @@ def createLocalFileName(show, include_original_title=False, use_plex_formatting=
       #   \show_title\Season 01\series_title (original-title) - s01e01.mp4
       # or 
       #    \show_title\Season 01\series_title (original-title) - showtime [pid].mp4
-      return "{0}{sep}Season {4}{sep}{1}{2} - s{4}e{3}.mp4".format(sanitizeFileName(show_title), sanitizeFileName(series_title), original_title, str(show['ep_num']).zfill(2), str(show['season_num'] if 'season_num' in show else 1).zfill(2), sep=sep)
+      return "{0}{sep}Season {4}{sep}{1}{2} - s{4}e{3}{imdb_id_part}.mp4".format(sanitizeFileName(show_title), sanitizeFileName(series_title), original_title, str(show['ep_num']).zfill(2), str(show['season_num'] if 'season_num' in show else 1).zfill(2), sep=sep, imdb_id_part=imdb_id_part)
     else:
-      return "{0}{sep}{1}{2} - {3} - [{4}].mp4".format(sanitizeFileName(show_title), sanitizeFileName(series_title), original_title, sanitizeFileName(show['showtime'][:10]), sanitizeFileName(show['pid']), sep=sep)
+      return "{0}{sep}{1}{2} - {3} - [{4}]{imdb_id_part}.mp4".format(sanitizeFileName(show_title), sanitizeFileName(series_title), original_title, sanitizeFileName(show['showtime'][:10]), sanitizeFileName(show['pid']), sep=sep, imdb_id_part=imdb_id_part)
       
   else:
     # Create the local filename, if not multiple episodes then
@@ -831,7 +898,7 @@ def getVodSchedule(existing_schedule, args_incremental_refresh=False):
       schedule.update(program_schedule) # Want to override existing keys again!
     except Exception as ex:
         print( "Unable to retrieve schedule for VOD program '{0}', no episodes will be available for download from this program.".format(program['title']))
-        print( ex )
+        print(traceback.format_exc())
         continue
     printProgress(completed_programs, total_programs, prefix = 'Reading:', suffix ='', barLength = 25)
 
@@ -901,10 +968,13 @@ def getVodSeriesSchedule(sid, _):
     prog['cat_names'].append(pcat['title'])
 
   # Check if the categories have known names
-  isMovie = True if 'heimildarmyndir' in prog['cat_slugs'] or 'kvikmyndir' in prog['cat_slugs'] else False
+  isMovie = True if 'kvikmyndir' in prog['cat_slugs'] and not 'leiknir-thaettir' in prog['cat_slugs'] else False
   isDocumentary = True if 'heimildarmyndir' in prog['cat_slugs'] else False
   isSport = True if 'ithrottir' in prog['cat_slugs'] else False
   isEnglishSubtitlesEntry = True if 'with English subtitles' in prog['title'] else False
+
+  # Determine the type
+  series_type = "documentary" if isDocumentary else "movie" if isMovie else "tvshow" if not isSport or 'leiknir-thaettir' in prog['cat_slugs'] else None
 
   series_title = prog['title']
   series_description = prog['short_description']
@@ -913,9 +983,39 @@ def getVodSeriesSchedule(sid, _):
   portrait_image = formatCoverArtResolutionMacro(prog['portrait_image']) if 'portrait_image' in prog else None
   foreign_title = prog['foreign_title']
   total_episodes = len(prog['episodes'])
+  imdb_result = None
+
+  # Is it icelandic?
+  isIcelandic = str(series_description).lower().startswith('íslensk')
+
+  # 
+  # Attempt to find the entry in IMDB if possible, but only for foreign titles, i.e. movies and shows that 
+  # have a foreign title set
+  if not series_type is None and len(series_type) > 0 and not 'born' in prog['cat_slugs'] :
+    # Attempt to extract the year from the description field
+    series_year = getGroup(RE_CAPTURE_YEAR_FROM_DESCRIPTION, 'year', series_shortdescription)
+
+    # Sample the duration of the first episode, this is used to determine if a movie is a short or not
+    sample_duration_sec = prog['episodes'][0]['duration'] if 'duration' in prog['episodes'][0] else 0
+
+    # Determine if multiepisodic and how many episodes there are
+    detected_num = getGroup(RE_CAPTURE_VOD_EPNUM_FROM_TITLE, 'ep_total', prog['episodes'][0]['title'] if not prog['episodes'][0]['title'] is None else series_title )
+    total_episode_num = max(int(prog['vod_available_episodes']), int(detected_num) if not detected_num is None else 1 ) if 'multiple_episodes' in prog and prog['multiple_episodes'] else 1
+    
+    imdb_result = None
+    # first check the foreign title, this is most likely to result in a match
+    if not foreign_title is None:
+      imdb_result = lookupItemInIMDB(foreign_title, series_year, series_type, sample_duration_sec, total_episode_num, isIcelandic)
+
+    # If the foreign title is not set but the series title is set then check the local title AND ONLY IF THIS IS A MOVIE!!!
+    # this condition will be mostly true for icelandic movies and documentaries, they are likely to be found in imdb
+    if foreign_title is None and not series_title is None and isMovie:
+      imdb_result = lookupItemInIMDB(series_title, series_year, series_type, sample_duration_sec, total_episode_num, isIcelandic)
 
   for episode in prog['episodes']:
     entry = {}
+
+    entry['imdb'] = imdb_result
 
     entry['series_title'] = series_title
     entry['series_desc'] = series_description
@@ -925,6 +1025,10 @@ def getVodSeriesSchedule(sid, _):
 
     # Fix the episode description if needed
     episode['description'] = ' '.join(episode['description']) if type(episode['description']) is list else episode['description']
+    # Fix episode title
+    if episode['title'] is None: 
+      #episode['title'] = series_title
+      episode['title'] = ''
 
     entry['episode'] = episode
     entry['episode_title'] = episode['title']
@@ -951,6 +1055,8 @@ def getVodSeriesSchedule(sid, _):
           'name': name,
           'value': episode['subtitles'][name]
         })
+
+    entry['has_subtitles'] = True if not entry['subtitles_url'] is None and len(entry['subtitles_url']) > 1 else False
 
     entry['eventid'] = episode['event']
     entry['rating'] = episode['rating']
@@ -1076,8 +1182,8 @@ def runMain():
         schedule = {}
       
       # Downloading the full VOD available schedule as well, signal an incremental update if the schedule object has entries in it
-      schedule = getVodSchedule(schedule, len(schedule) > 0)
-      
+      schedule = getVodSchedule(schedule, len(schedule) > 0) 
+    
     # Save the tv schedule as the most current one, save it to ensure we format the today date
     if( schedule_was_refreshed and len(schedule) > 1 ):
       saveCurrentTvSchedule(schedule,tv_schedule_file_name)
@@ -1250,7 +1356,7 @@ def runMain():
         print("Downloading only artworks and subtitle files")
 
       if args.plex : 
-        if( item['is_movie']):
+        if( item['is_movie'] or item['is_docu']):
           downloadMoviePoster(local_filename, display_title, item, Path(args.output))
         else: 
           downloadTVShowPoster(local_filename, display_title, item, Path(args.output))
