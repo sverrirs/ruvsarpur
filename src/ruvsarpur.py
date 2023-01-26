@@ -1226,6 +1226,7 @@ def loadImdbOriginalTitles(args_imdbfolder):
   imdb_title_cache = {}
 
   if not args_imdbfolder or args_imdbfolder is None:
+    print(color_warn(f"The '--imdbfolder' argument is not set, this will impact IMDB matching for non-english content, consider setting this parameter and downloading the 'title.basics.tsv' file from https://www.imdb.com/interfaces/"))
     return imdb_title_cache
 
   if not os.path.exists(args_imdbfolder):
@@ -1252,7 +1253,9 @@ def loadImdbOriginalTitles(args_imdbfolder):
 #    runtimeMinutes – primary runtime of the title, in minutes
 #    genres (string array) – includes up to three genres associated with the title
 
-  printProgress(0, 100, prefix = 'Estimating IMDB data size:', suffix = 'Estimating', barLength = 25)
+  print(color_info("Processing IMDB data files")+ f" | Folder {args_imdbfolder}")
+
+  printProgress(0, 100, prefix = 'Estimating size:', suffix = 'Working', barLength = 25)
   total_lines = countLinesInFile(imdb_basics_file_path)
   curr_line = 0
 
@@ -1261,7 +1264,7 @@ def loadImdbOriginalTitles(args_imdbfolder):
       curr_line += 1
 
       if( curr_line == 1 or curr_line % 10000 == 0):
-        printProgress(curr_line, total_lines, prefix = 'Reading IMDB data:', suffix = f" | Line {curr_line:,} of {total_lines:,}", barLength = 25)
+        printProgress(curr_line, total_lines, prefix = 'Reading Original Titles:', suffix = f" | item {curr_line:,} of {total_lines:,}", barLength = 25)
 
       (tconst, titleType, primaryTitle, originalTitle, isAdult, startYear, endYear, runtimeMinutes, genres) = line.split('\t')      
 
@@ -1277,7 +1280,8 @@ def loadImdbOriginalTitles(args_imdbfolder):
 
       imdb_title_cache[tconst] = originalTitle
 
-  printProgress(total_lines, total_lines, prefix = 'Reading IMDB data:', suffix = f" | Done with {total_lines:,} lines", barLength = 25)
+  printProgress(total_lines, total_lines, prefix = 'Reading Original Titles:', suffix = f" | Processed {total_lines:,} items           ", barLength = 25)
+  print()
 
   return imdb_title_cache
     
@@ -1297,25 +1301,22 @@ def runMain():
     # Get ffmpeg exec
     ffmpegexec = findffmpeg(args.ffmpeg, working_dir)
 
-    # Attempt to download and parse the imdb database files
-    imdb_orignal_titles = loadImdbOriginalTitles(args.imdbfolder)
-
     # Create the full filenames for the config files
     previously_recorded_file_name = createFullConfigFileName(args.portable,PREV_LOG_FILE)
     tv_schedule_file_name = createFullConfigFileName(args.portable,TV_SCHEDULE_LOG_FILE)
-    imdb_cache_file_name = createFullConfigFileName(args.portable, IMDB_CACHE_FILE)
     
     # Get information about already downloaded episodes
     previously_recorded = getPreviouslyRecordedShows(previously_recorded_file_name)
 
-    schedule_was_refreshed = False
-
     # Get an existing tv schedule if possible
     schedule = getExistingTvSchedule(tv_schedule_file_name)
-    imdb_cache = getExistingJsonFile(imdb_cache_file_name)
     
     if( args.refresh or schedule is None  ):
-      schedule_was_refreshed = True
+    
+      # Only load the IMDB data if we are refreshing the schedule
+      imdb_orignal_titles = loadImdbOriginalTitles(args.imdbfolder)
+      imdb_cache_file_name = createFullConfigFileName(args.portable, IMDB_CACHE_FILE)
+      imdb_cache = getExistingJsonFile(imdb_cache_file_name)
 
       # Only clear out the schedule if we are not dealing with an incremental update
       # or if the dates don't match anymore 
@@ -1325,10 +1326,12 @@ def runMain():
       # Downloading the full VOD available schedule as well, signal an incremental update if the schedule object has entries in it
       schedule = getVodSchedule(schedule, len(schedule) > 0, imdb_cache, imdb_orignal_titles) 
     
-    # Save the tv schedule as the most current one, save it to ensure we format the today date
-    if( schedule_was_refreshed and len(schedule) > 1 ):
-      saveCurrentTvSchedule(schedule,tv_schedule_file_name)
-      saveImdbCache(imdb_cache, imdb_cache_file_name)
+      # Save the tv schedule as the most current one, save it to ensure we format the today date
+      if len(schedule) > 1 :
+        saveCurrentTvSchedule(schedule, tv_schedule_file_name)
+
+      if len(imdb_cache) > 0:
+        saveImdbCache(imdb_cache, imdb_cache_file_name)
 
     if( args.debug ):
       for key, schedule_item in schedule.items():
