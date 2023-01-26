@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 # coding=utf-8
-__version__ = "11.3.0"
+__version__ = "12.0.0"
 # When modifying remember to issue a new tag command in git before committing, then push the new tag
-#   git tag -a v11.3.0 -m "v11.3.0"
+#   git tag -a v12.0.0 -m "v12.0.0"
 #   git push origin master --tags
 """
 Python script that allows you to download TV shows off the Icelandic RÚV Sarpurinn website.
@@ -39,7 +39,7 @@ import json # To store and load the tv schedule that has already been downloaded
 import argparse # Command-line argument parser
 import requests # Downloading of data from HTTP
 import datetime # Formatting of date objects 
-from fuzzywuzzy import fuzz # For fuzzy string matching when trying to find programs by title or description
+from fuzzywuzzy import fuzz # For fuzzy string matching when trying to find programs by title or description, https://towardsdatascience.com/string-matching-with-fuzzywuzzy-e982c61f8a84
 from operator import itemgetter # For sorting the download list items https://docs.python.org/3/howto/sorting.html#operator-module-functions
 import ntpath # Used to extract file name from path for all platforms http://stackoverflow.com/a/8384788
 import glob # Used to do partial file path matching (when searching for already downloaded files) http://stackoverflow.com/a/2225582/779521
@@ -52,6 +52,7 @@ from requests.adapters import HTTPAdapter # For Retrying
 from requests.packages.urllib3.util.retry import Retry # For Retrying
 
 import subprocess # To execute shell commands 
+from itertools import (takewhile,repeat) # To count lines for the extremely large IMDB files 
 
 # Disable SSL warnings
 from requests.packages.urllib3.exceptions import InsecureRequestWarning
@@ -65,6 +66,10 @@ color_pid = lambda x: colored(x, 'red')
 color_sid = lambda x: colored(x, 'yellow')
 color_description = lambda x: colored(x, 'white')
 
+color_error = lambda x: colored(x, 'red')
+color_warn = lambda x: colored(x, 'yellow')
+color_info = lambda x: colored(x, 'cyan')
+
 color_progress_fill = lambda x: colored(x, 'green')
 color_progress_remaining = lambda x: colored(x, 'white')
 color_progress_percent = lambda x: colored(x, 'green')
@@ -76,6 +81,8 @@ LOG_DIR="{0}/{1}".format(os.path.expanduser('~'),'.ruvsarpur')
 PREV_LOG_FILE = 'prevrecorded.log'
 # Name of the log file containing the downloaded tv schedule
 TV_SCHEDULE_LOG_FILE = 'tvschedule.json'
+# Name of the file containing cache to imdb series and movies matches
+IMDB_CACHE_FILE = 'imdb-cache.json'
 
 # The available bitrate streams
 QUALITY_BITRATE = {
@@ -97,6 +104,24 @@ RE_VOD_URL_PARTS = re.compile(r'(?P<urlprefix>.*)(?P<rest>\/\d{3,4}\/index\.m3u8
 RE_VOD_BASE_URL = re.compile(r'(?P<vodbase>.*)\/(?P<rest>.*\.m3u8)', re.IGNORECASE)
 
 RUV_URL = 'https://ruv-vod.akamaized.net'
+
+# Function to count lines in very large files efficiently, see: https://stackoverflow.com/a/27517681/779521
+def countLinesInFile(filename):
+    with open(filename, 'rb') as f:
+      bufgen = takewhile(lambda x: x, (f.raw.read(1024*1024) for _ in repeat(None)))
+      return sum( buf.count(b'\n') for buf in bufgen if buf )
+
+# Checks to see if a file is older than a specific timedelta
+# See: https://stackoverflow.com/a/65412797/779521
+# Example: 
+#     isFileOlderThan(filename, timedelta(seconds=10))
+#     isFileOlderThan(filename, timedelta(days=14))
+def isFileOlderThan(file, delta): 
+    cutoff = datetime.datetime.utcnow() - delta
+    mtime = datetime.datetime.utcfromtimestamp(os.path.getmtime(file))
+    if mtime < cutoff:
+        return True
+    return False
 
 # Print console progress bar
 # http://stackoverflow.com/a/34325723
@@ -162,7 +187,7 @@ def printProgress (iteration, total, prefix = '', suffix = '', decimals = 1, bar
 #              }
 #            ],
 #}
-def lookupItemInIMDB(item_title, item_year, item_type, sample_duration_sec, total_episode_num, isIcelandic):
+def lookupItemInIMDB(item_title, item_year, item_type, sample_duration_sec, total_episode_num, isIcelandic, imdb_orignal_titles):
   if item_title is None or len(item_title) < 1:
     return None
 
@@ -182,15 +207,9 @@ def lookupItemInIMDB(item_title, item_year, item_type, sample_duration_sec, tota
     imdb_item_types = ['mini-series', 'tv mini-series'] if total_episode_num > 1 and total_episode_num <= 6 else ['tv series']
   
   try:
-    first_character_in_title = item_title[0]
-    url_encoded_title = urllib.parse.quote(item_title)
-
-    imdb_url = f"https://v2.sg.media-imdb.com/suggestion/{first_character_in_title}/{url_encoded_title}.json?includeVideos=1"
-
-    r = __create_retry_session().get(imdb_url)  
-    # If the status is not success then terminate
-    if( r.status_code != 200 ):
-      return None
+    r = __create_retry_session().get(f"https://v2.sg.media-imdb.com/suggestion/x/{urllib.parse.quote(item_title)}.json?includeVideos=1")
+    if( r.status_code != 200 ): 
+      return None # If the status is not success then terminate
   except:
     # If we have a failure in the IMDB api we do not want to fail RUV, just silently ignore this
     return None
@@ -203,36 +222,55 @@ def lookupItemInIMDB(item_title, item_year, item_type, sample_duration_sec, tota
 
   # We remove all matches that do not have a covery photo, unlikely that it is going to be a great match
   # also remove matches that do not have any actors starring in it
-  matches = [obj for obj in data['d'] if 'i' in obj and 's' in obj and len(obj['s']) > 2]
+  matches = [obj for obj in data['d'] if 'i' in obj and 'q' in obj and 's' in obj and len(obj['s']) > 2 and str(obj['id']).startswith('tt')]
   num_matches = len(matches)
   if num_matches <= 0:
     return None
 
-  result = None
-  num_type_matches = sum(('q' in obj and str(obj['q']).lower() in imdb_item_types) for obj in matches)
-  num_exact_name_matches = sum(('l' in obj and item_title.lower() == obj['l'].lower()) for obj in matches)
-  num_fuzzy_name_matches = sum(('l' in obj and fuzz.partial_ratio( item_title, obj['l'] ) > 85) for obj in matches)
-  found_via = "Nothing"
+  # Augment the remaining matches with their original titles from the titles cache if it is available
+  if not imdb_orignal_titles is None and len(imdb_orignal_titles) > 0:
+    for m in matches:
+      org_title = imdb_orignal_titles[m['id']] if m['id'] in imdb_orignal_titles else None
+      if not org_title is None:
+        m['lo'] = org_title
 
-  # If there is an single exact name match, we pick that
-  if num_exact_name_matches == 1:
-    result = next((obj for obj in matches if 'l' in obj and item_title.lower() == obj['l'].lower()), None)
-    found_via = "Exact Name"
+  result = None
+  found_via = "Nothing"
+  item_title_lower = item_title.lower()
+
+  # If there is an single exact name match for primary title, we pick that
+  if 1 == sum(('l' in obj and item_title_lower == obj['l'].lower()) for obj in matches):
+    result = next((obj for obj in matches if 'l' in obj and item_title_lower == obj['l'].lower()), None)
+    found_via = "Exact primary title"
+
+  if 1 == sum(('lo' in obj and item_title_lower == obj['lo'].lower()) for obj in matches):
+    result = next((obj for obj in matches if 'lo' in obj and item_title_lower == obj['lo'].lower()), None)
+    found_via = "Exact original title"
 
   # Special case for icelandic movies, they are extremly likely to be the first result if searched by the icelandic name
-  if isIcelandic and item_type == 'movie':
-    result = matches[0]
-    found_via = "First match (Icelandic Movie)"
+  #if isIcelandic and item_type == 'movie':
+  #  result = matches[0]
+  #  found_via = "First match (Icelandic Movie)"
 
   # If there is a single slightly fuzzy name match, we pick that
-  if result is None and num_fuzzy_name_matches == 1:
-    result = next((obj for obj in matches if 'l' in obj and fuzz.partial_ratio( item_title, obj['l'] ) > 85), None)
-    found_via = "Similar name, single match"
+  if result is None and 1 == sum(('l' in obj and fuzz.ratio( item_title_lower, obj['l'].lower() ) > 85) for obj in matches):
+    result = next((obj for obj in matches if 'l' in obj and fuzz.ratio( item_title_lower, obj['l'].lower() ) > 85), None)
+    found_via = "Similar primary title, single match"
+  
+  # If there is a single slightly fuzzy name match, we pick that
+  if result is None and 1 == sum(('lo' in obj and fuzz.ratio( item_title_lower, obj['lo'].lower() ) > 85) for obj in matches):
+    result = next((obj for obj in matches if 'lo' in obj and fuzz.ratio( item_title_lower, obj['lo'].lower() ) > 85), None)
+    found_via = "Similar original title, single match"
 
   # Attempt to find a match in the list with a similar name and type
   if result is None:
-    result = next((obj for obj in matches if 'l' in obj and fuzz.partial_ratio( item_title, obj['l'] ) > 75 and 'q' in obj and str(obj['q']).lower() in imdb_item_types), None)
-    found_via = "Similar name and type, first match"
+    result = next((obj for obj in matches if 'l' in obj and fuzz.ratio( item_title_lower, obj['l'].lower() ) > 85 and 'q' in obj and str(obj['q']).lower() in imdb_item_types), None)
+    found_via = "Similar primary title and type, first match"
+
+  # Attempt to find a match in the list with a similar name and type
+  if result is None:
+    result = next((obj for obj in matches if 'lo' in obj and fuzz.ratio( item_title_lower, obj['lo'].lower() ) > 85 and 'q' in obj and str(obj['q']).lower() in imdb_item_types), None)
+    found_via = "Similar original title and type, first match"
 
   # Still no match, attempt to find one with a matching year if it is specified
   if result is None and not item_year is None: 
@@ -618,6 +656,9 @@ def parseArguments():
 
   parser.add_argument("--refresh", help="Refreshes the TV schedule data", action="store_true")
 
+  parser.add_argument("--imdbfolder", help="Folder storing the downloaded and unzipped title.basics.tsv database snapshot from IMDB, see https://www.imdb.com/interfaces/", 
+                                      type=str)
+
   parser.add_argument("--incremental", help="Performs fast incremental intra-day refreshes. Setting this switch instructs the refresh mechanism to only download information for items that are new since the last full TV schedule refresh from the same day. This option has no effect and a full refresh is performed if the date of this refresh is newer than the latest refresh data. ", action="store_true")
 
   parser.add_argument("--plex", help="Creates Plex Media Server compatible file names and folder structures. See https://support.plex.tv/articles/naming-and-organizing-your-tv-show-files/", action="store_true")
@@ -691,7 +732,27 @@ def saveCurrentTvSchedule(schedule,tv_file_name):
 
   with open(tv_file_name, 'w+', encoding='utf-8') as out_file:
     out_file.write(json.dumps(schedule, ensure_ascii=False, sort_keys=True, indent=2*' '))
+
+def saveImdbCache(imdb_cache, imdb_cache_file_name):
+  os.makedirs(os.path.dirname(imdb_cache_file_name), exist_ok=True)
+
+  with open(imdb_cache_file_name, 'w+', encoding='utf-8') as out_file:
+    out_file.write(json.dumps(imdb_cache, ensure_ascii=False, sort_keys=True, indent=2*' '))
   
+def getExistingJsonFile(file_name):
+  try:
+    tv_file = Path(file_name)
+    if tv_file.is_file():
+      with tv_file.open('r+',encoding='utf-8') as in_file:
+        existing = json.load(in_file)
+      
+      return existing
+    else:
+      return None
+  except Exception as ex:
+    print(f"Could not open '{file_name}', {ex})")
+    return None
+
 def getExistingTvSchedule(tv_file_name):
   try:
     tv_file = Path(tv_file_name)
@@ -839,7 +900,7 @@ RE_CAPTURE_VOD_EPNUM_FROM_TITLE = re.compile(r'(?P<ep_num>\d+) af (?P<ep_total>\
 #
 # Downloads the full front page VOD schedule and for each episode in there fetches all available episodes
 # uses the new RUV GraphQL queries
-def getVodSchedule(existing_schedule, args_incremental_refresh=False):
+def getVodSchedule(existing_schedule, args_incremental_refresh=False, imdb_cache=None, imdb_orignal_titles=None):
 
   # Start with getting all the series available on RUV through their API, this gives us basic information about each of the series
   # https://api.ruv.is/api/programs/tv/all
@@ -865,7 +926,6 @@ def getVodSchedule(existing_schedule, args_incremental_refresh=False):
     return schedule
 
   # Filter out all programs that do not have any vod files to download and have an id field
-  #panels = [p for p in data if 'vod_available_episodes' in p and 'id' in p and p['vod_available_episodes'] > 0]
   panels = [p for p in data if 'web_available_episodes' in p and 'id' in p and p['web_available_episodes'] > 0]
 
   completed_programs = 0
@@ -880,19 +940,19 @@ def getVodSchedule(existing_schedule, args_incremental_refresh=False):
     completed_programs += 1
 
     # If incremental, then check if we already have this series if we don't we want to add it, 
-    # if we have the series check if the vod_available_episodes match if not then we want to re-add it
+    # if we have the series check if the web_available_episodes match if not then we want to re-add it
     if args_incremental_refresh:
       existing_vod_episodes_count = sum(type(schedule[p]) is dict and schedule[p]['sid'] == str(program['id']) for p in schedule)
-      if( program['vod_available_episodes'] <= existing_vod_episodes_count and existing_vod_episodes_count > 0 ):
+      if( program['web_available_episodes'] <= existing_vod_episodes_count and existing_vod_episodes_count > 0 ):
         continue
       else:
-        existing_vs_new_diff = program['vod_available_episodes'] - existing_vod_episodes_count
+        existing_vs_new_diff = program['web_available_episodes'] - existing_vod_episodes_count
         printProgress(completed_programs, total_programs, prefix = 'Detected {0} new entries for {1}:'.format(existing_vs_new_diff, color_sid(program['title'])), suffix ='', barLength = 25)
 
     # Add all details for the given program to the schedule
     try:
       # We want to not override existing items in the schedule dictionary in case they are downloaded again
-      program_schedule = getVodSeriesSchedule(program['id'], program)
+      program_schedule = getVodSeriesSchedule(program['id'], program, imdb_cache, imdb_orignal_titles)
       # This joining of the two dictionaries below is necessary to ensure that 
       # the existing items are not overwritten, therefore schedule is appended to the new list, existing items overwriting any new items.
       #schedule = dict(list(program_schedule.items()) + list(schedule.items())) 
@@ -942,10 +1002,8 @@ def formatCoverArtResolutionMacro(rawsrc):
   return str(rawsrc).replace('$$IMAGESIZE$$','2048')
 
 #
-# Given a series id and program data, downloads all 
-# episodes available for that series
-# isMovies parameter indicates if the programs belong to the list of known movie categories and should be treated as such
-def getVodSeriesSchedule(sid, _):
+# Given a series id and program data, downloads all episodes available for that series
+def getVodSeriesSchedule(sid, _, imdb_cache, imdb_orignal_titles):
   schedule = {}  
 
   # Perform two lookups, first to the API as this gives us a more complete information about the series, but unfortunately no episode data
@@ -989,10 +1047,16 @@ def getVodSeriesSchedule(sid, _):
   # Is it icelandic?
   isIcelandic = str(series_description).lower().startswith('íslensk')
 
+  # First check to see if the series sid is present in the imdb_cache file
+  # if it is then we already have our imdb data, if not then we have to look it up
+  if not imdb_cache is None and str(sid) in imdb_cache:
+    imdb_cache_entry = imdb_cache[str(sid)]
+    imdb_result = imdb_cache_entry['imdb']
+
   # 
   # Attempt to find the entry in IMDB if possible, but only for foreign titles, i.e. movies and shows that 
   # have a foreign title set
-  if not series_type is None and len(series_type) > 0 and not 'born' in prog['cat_slugs'] :
+  if imdb_result is None and not series_type is None and len(series_type) > 0 and not 'born' in prog['cat_slugs'] :
     # Attempt to extract the year from the description field
     series_year = getGroup(RE_CAPTURE_YEAR_FROM_DESCRIPTION, 'year', series_shortdescription)
 
@@ -1001,17 +1065,27 @@ def getVodSeriesSchedule(sid, _):
 
     # Determine if multiepisodic and how many episodes there are
     detected_num = getGroup(RE_CAPTURE_VOD_EPNUM_FROM_TITLE, 'ep_total', prog['episodes'][0]['title'] if not prog['episodes'][0]['title'] is None else series_title )
-    total_episode_num = max(int(prog['vod_available_episodes']), int(detected_num) if not detected_num is None else 1 ) if 'multiple_episodes' in prog and prog['multiple_episodes'] else 1
+    total_episode_num = max(int(prog['web_available_episodes']), int(detected_num) if not detected_num is None else 1 ) if 'multiple_episodes' in prog and prog['multiple_episodes'] else 1
     
     imdb_result = None
     # first check the foreign title, this is most likely to result in a match
     if not foreign_title is None:
-      imdb_result = lookupItemInIMDB(foreign_title, series_year, series_type, sample_duration_sec, total_episode_num, isIcelandic)
+      imdb_result = lookupItemInIMDB(foreign_title, series_year, series_type, sample_duration_sec, total_episode_num, isIcelandic, imdb_orignal_titles)
 
-    # If the foreign title is not set but the series title is set then check the local title AND ONLY IF THIS IS A MOVIE!!!
-    # this condition will be mostly true for icelandic movies and documentaries, they are likely to be found in imdb
-    if foreign_title is None and not series_title is None and isMovie:
-      imdb_result = lookupItemInIMDB(series_title, series_year, series_type, sample_duration_sec, total_episode_num, isIcelandic)
+    # Icheck the local title AND ONLY IF THIS IS A MOVIE.
+    # this condition will be mostly true for icelandic movies and documentaries, this is also true when RUV incorrectly enters their data
+    #  and places the english name in the series and the icelandic name in the foreign title!, which is very common.
+    if not series_title is None and isMovie:
+      imdb_result = lookupItemInIMDB(series_title, series_year, series_type, sample_duration_sec, total_episode_num, isIcelandic, imdb_orignal_titles)
+
+    # If the imdb result was found then store it in the corrections file for later reuse
+    if not imdb_result is None:
+      imdb_cache[str(sid)] = {
+        'series_id': sid,
+        'original-title': foreign_title, 
+        'series_title': series_title, 
+        'imdb': imdb_result
+      }
 
   for episode in prog['episodes']:
     entry = {}
@@ -1071,7 +1145,7 @@ def getVodSeriesSchedule(sid, _):
 
     entry['categories'] = prog['cat_names']
     entry['multiple_episodes'] = prog['multiple_episodes']
-    entry['vod_available_episodes'] = prog['vod_available_episodes']
+    entry['web_available_episodes'] = prog['web_available_episodes']
 
     entry['ep_num'] = str(episode['number']) if 'number' in episode else getGroup(RE_CAPTURE_VOD_EPNUM_FROM_TITLE, 'ep_num', episode['title'])
     if not entry['ep_num'] is None:
@@ -1145,6 +1219,67 @@ def getGroup(regex, group_name, haystack):
     if len(match_value) > 0:
       return match_value
   return None
+
+# Attempts to load the IMDB enhancment files from the given imdb path
+# this is optional and if the files are not present then this enhancement information will not be available
+def loadImdbOriginalTitles(args_imdbfolder):
+  imdb_title_cache = {}
+
+  if not args_imdbfolder or args_imdbfolder is None:
+    return imdb_title_cache
+
+  if not os.path.exists(args_imdbfolder):
+    print(color_error(f"The IMDB path {args_imdbfolder} does not exist, no additional information from IMDB will be available, to enable download the title.basics.tsv file from https://www.imdb.com/interfaces/"))
+    return imdb_title_cache
+
+  imdb_basics_file_path = os.path.join(args_imdbfolder, "title.basics.tsv")
+  if not os.path.isfile(imdb_basics_file_path):
+    print(color_error(f"Unable to locate the basics database file at {imdb_basics_file_path}, no additional information from IMDB will be available, to enable download the title.basics.tsv file from https://www.imdb.com/interfaces/"))
+    return imdb_title_cache
+
+  # Check the age of the file on disk and print out a warning if it is more than 6 months old
+  if isFileOlderThan(imdb_basics_file_path, datetime.timedelta(days=183)):
+    print(color_warn(f"The '{imdb_basics_file_path}' file is older than 6 months, consider downloading a newer 'title.basics.tsv' file from https://www.imdb.com/interfaces/"))
+  
+#  title.basics.tsv.gz - Contains the following information for titles:
+#    tconst (string) - alphanumeric unique identifier of the title
+#    titleType (string) – the type/format of the title (e.g. movie, short, tvseries, tvepisode, video, etc)
+#    primaryTitle (string) – the more popular title / the title used by the filmmakers on promotional materials at the point of release
+#    originalTitle (string) - original title, in the original language
+#    isAdult (boolean) - 0: non-adult title; 1: adult title
+#    startYear (YYYY) – represents the release year of a title. In the case of TV Series, it is the series start year
+#    endYear (YYYY) – TV Series end year. ‘\N’ for all other title types
+#    runtimeMinutes – primary runtime of the title, in minutes
+#    genres (string array) – includes up to three genres associated with the title
+
+  printProgress(0, 100, prefix = 'Estimating IMDB data size:', suffix = 'Estimating', barLength = 25)
+  total_lines = countLinesInFile(imdb_basics_file_path)
+  curr_line = 0
+
+  with open(imdb_basics_file_path, encoding="utf8") as f:
+    for line in f:
+      curr_line += 1
+
+      if( curr_line == 1 or curr_line % 10000 == 0):
+        printProgress(curr_line, total_lines, prefix = 'Reading IMDB data:', suffix = f" | Line {curr_line:,} of {total_lines:,}", barLength = 25)
+
+      (tconst, titleType, primaryTitle, originalTitle, isAdult, startYear, endYear, runtimeMinutes, genres) = line.split('\t')      
+
+      # Skip all lines that have an invalid IDENTIFIER or have '\N' missing indicator in critical fields
+      if not tconst.startswith('tt') or originalTitle == '\\N' or primaryTitle == '\\N' or startYear == '\\N':
+        continue
+
+      if int(startYear) <= 1930 or not isAdult == '0':
+        continue
+
+      if primaryTitle == originalTitle:
+        continue
+
+      imdb_title_cache[tconst] = originalTitle
+
+  printProgress(total_lines, total_lines, prefix = 'Reading IMDB data:', suffix = f" | Done with {total_lines:,} lines", barLength = 25)
+
+  return imdb_title_cache
     
 # The main entry point for the script
 def runMain():
@@ -1162,9 +1297,13 @@ def runMain():
     # Get ffmpeg exec
     ffmpegexec = findffmpeg(args.ffmpeg, working_dir)
 
+    # Attempt to download and parse the imdb database files
+    imdb_orignal_titles = loadImdbOriginalTitles(args.imdbfolder)
+
     # Create the full filenames for the config files
     previously_recorded_file_name = createFullConfigFileName(args.portable,PREV_LOG_FILE)
     tv_schedule_file_name = createFullConfigFileName(args.portable,TV_SCHEDULE_LOG_FILE)
+    imdb_cache_file_name = createFullConfigFileName(args.portable, IMDB_CACHE_FILE)
     
     # Get information about already downloaded episodes
     previously_recorded = getPreviouslyRecordedShows(previously_recorded_file_name)
@@ -1173,6 +1312,7 @@ def runMain():
 
     # Get an existing tv schedule if possible
     schedule = getExistingTvSchedule(tv_schedule_file_name)
+    imdb_cache = getExistingJsonFile(imdb_cache_file_name)
     
     if( args.refresh or schedule is None  ):
       schedule_was_refreshed = True
@@ -1183,11 +1323,12 @@ def runMain():
         schedule = {}
       
       # Downloading the full VOD available schedule as well, signal an incremental update if the schedule object has entries in it
-      schedule = getVodSchedule(schedule, len(schedule) > 0) 
+      schedule = getVodSchedule(schedule, len(schedule) > 0, imdb_cache, imdb_orignal_titles) 
     
     # Save the tv schedule as the most current one, save it to ensure we format the today date
     if( schedule_was_refreshed and len(schedule) > 1 ):
       saveCurrentTvSchedule(schedule,tv_schedule_file_name)
+      saveImdbCache(imdb_cache, imdb_cache_file_name)
 
     if( args.debug ):
       for key, schedule_item in schedule.items():
