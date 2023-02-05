@@ -544,7 +544,7 @@ def download_m3u8_playlist_using_ffmpeg(ffmpegexec, playlist_url, playlist_fragm
       prog_args.append("-metadata")
       prog_args.append("{0}={1}".format('show', sanitizeFileName(videoInfo['series_title']) )) #The name of the TV show,
 
-    if videoInfo['is_movie'] or videoInfo['is_docu'] and 'imdb' in videoInfo and not videoInfo['imdb'] is None:
+    if (videoInfo['is_movie'] or videoInfo['is_docu']) and 'imdb' in videoInfo and not videoInfo['imdb'] is None:
       if 'year' in videoInfo['imdb'] and not videoInfo['imdb']['year'] is None:
         prog_args.append("-metadata")
         prog_args.append("{0}={1}".format('date', videoInfo['imdb']['year'] )) # The year of the movie or documentary as reported by IMDB
