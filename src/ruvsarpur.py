@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 # coding=utf-8
-__version__ = "12.0.0"
+__version__ = "12.0.1"
 # When modifying remember to issue a new tag command in git before committing, then push the new tag
-#   git tag -a v12.0.0 -m "v12.0.0"
+#   git tag -a v12.0.1 -m "v12.0.1"
 #   git push origin master --tags
 """
 Python script that allows you to download TV shows off the Icelandic RÚV Sarpurinn website.
@@ -243,7 +243,7 @@ def lookupItemInIMDB(item_title, item_year, item_type, sample_duration_sec, tota
     result = next((obj for obj in matches if 'l' in obj and item_title_lower == obj['l'].lower()), None)
     found_via = "Exact primary title"
 
-  if 1 == sum(('lo' in obj and item_title_lower == obj['lo'].lower()) for obj in matches):
+  if result is None and 1 == sum(('lo' in obj and item_title_lower == obj['lo'].lower()) for obj in matches):
     result = next((obj for obj in matches if 'lo' in obj and item_title_lower == obj['lo'].lower()), None)
     found_via = "Exact original title"
 
@@ -939,6 +939,9 @@ def getVodSchedule(existing_schedule, args_incremental_refresh=False, imdb_cache
   for program in panels:
     completed_programs += 1
 
+    #if str(program['id']) != '32957': 
+    #  continue
+
     # If incremental, then check if we already have this series if we don't we want to add it, 
     # if we have the series check if the web_available_episodes match if not then we want to re-add it
     if args_incremental_refresh:
@@ -1069,13 +1072,13 @@ def getVodSeriesSchedule(sid, _, imdb_cache, imdb_orignal_titles):
     
     imdb_result = None
     # first check the foreign title, this is most likely to result in a match
-    if not foreign_title is None:
+    if imdb_result is None and not foreign_title is None:
       imdb_result = lookupItemInIMDB(foreign_title, series_year, series_type, sample_duration_sec, total_episode_num, isIcelandic, imdb_orignal_titles)
 
     # Icheck the local title AND ONLY IF THIS IS A MOVIE.
     # this condition will be mostly true for icelandic movies and documentaries, this is also true when RUV incorrectly enters their data
     #  and places the english name in the series and the icelandic name in the foreign title!, which is very common.
-    if not series_title is None and isMovie:
+    if imdb_result is None and not series_title is None and isMovie:
       imdb_result = lookupItemInIMDB(series_title, series_year, series_type, sample_duration_sec, total_episode_num, isIcelandic, imdb_orignal_titles)
 
     # If the imdb result was found then store it in the corrections file for later reuse
@@ -1320,7 +1323,7 @@ def runMain():
 
       # Only clear out the schedule if we are not dealing with an incremental update
       # or if the dates don't match anymore 
-      if not args.incremental or schedule['date'].date() < today:
+      if not args.incremental or schedule['date'].date() < today or args.force:
         schedule = {}
       
       # Downloading the full VOD available schedule as well, signal an incremental update if the schedule object has entries in it
