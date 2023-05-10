@@ -1320,6 +1320,8 @@ def runMain():
       imdb_orignal_titles = loadImdbOriginalTitles(args.imdbfolder)
       imdb_cache_file_name = createFullConfigFileName(args.portable, IMDB_CACHE_FILE)
       imdb_cache = getExistingJsonFile(imdb_cache_file_name)
+      if( imdb_cache is None ):
+        imdb_cache = []
 
       # Only clear out the schedule if we are not dealing with an incremental update
       # or if the dates don't match anymore 
