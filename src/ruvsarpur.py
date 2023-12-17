@@ -1038,7 +1038,8 @@ def getVodSeriesSchedule(sid, _, imdb_cache, imdb_orignal_titles):
   # Determine the type
   series_type = "documentary" if isDocumentary else "movie" if isMovie else "tvshow" if not isSport or 'leiknir-thaettir' in prog['cat_slugs'] else None
 
-  series_title = prog['title']
+  series_title = trimSeasonNumberSuffix(prog['title'])
+  series_title_wseason = prog['title']
   series_description = prog['short_description']
   series_shortdescription = prog['description']
   series_image = formatCoverArtResolutionMacro(prog['image']) if 'image' in prog else None
@@ -1164,23 +1165,23 @@ def getVodSeriesSchedule(sid, _, imdb_cache, imdb_orignal_titles):
 
     # Attempt to parse out the season number, start with 1 as the default
     entry['season_num'] = '1'
-    if str(series_title).endswith(' 2') or str(series_title).endswith(' II') or str(foreign_title).endswith(' II') or 'önnur þáttaröð' in str(entry['desc']).lower():
+    if str(series_title_wseason).endswith(' 2') or str(series_title_wseason).endswith(' II') or str(foreign_title).endswith(' II') or 'önnur þáttaröð' in str(entry['desc']).lower():
       entry['season_num'] = '2'
-    elif str(series_title).endswith(' 3') or str(series_title).endswith(' III') or str(foreign_title).endswith(' III') or 'þriðja þáttaröð' in str(entry['desc']).lower():
+    elif str(series_title_wseason).endswith(' 3') or str(series_title_wseason).endswith(' III') or str(foreign_title).endswith(' III') or 'þriðja þáttaröð' in str(entry['desc']).lower():
       entry['season_num'] = '3'
-    elif str(series_title).endswith(' 4') or str(series_title).endswith(' IV') or str(foreign_title).endswith(' IV') or 'fjórða þáttaröð' in str(entry['desc']).lower():
+    elif str(series_title_wseason).endswith(' 4') or str(series_title_wseason).endswith(' IV') or str(foreign_title).endswith(' IV') or 'fjórða þáttaröð' in str(entry['desc']).lower():
       entry['season_num'] = '4'
-    elif str(series_title).endswith(' 5') or str(series_title).endswith(' V') or str(foreign_title).endswith(' V') or 'fimmta þáttaröð' in str(entry['desc']).lower():
+    elif str(series_title_wseason).endswith(' 5') or str(series_title_wseason).endswith(' V') or str(foreign_title).endswith(' V') or 'fimmta þáttaröð' in str(entry['desc']).lower():
       entry['season_num'] = '5'
-    elif str(series_title).endswith(' 6') or str(series_title).endswith(' VI') or str(foreign_title).endswith(' VI') or 'sjötta þáttaröð' in str(entry['desc']).lower():
+    elif str(series_title_wseason).endswith(' 6') or str(series_title_wseason).endswith(' VI') or str(foreign_title).endswith(' VI') or 'sjötta þáttaröð' in str(entry['desc']).lower():
       entry['season_num'] = '6'
-    elif str(series_title).endswith(' 7') or str(series_title).endswith(' VII') or str(foreign_title).endswith(' VII') or 'sjöunda þáttaröð' in str(entry['desc']).lower():
+    elif str(series_title_wseason).endswith(' 7') or str(series_title_wseason).endswith(' VII') or str(foreign_title).endswith(' VII') or 'sjöunda þáttaröð' in str(entry['desc']).lower():
       entry['season_num'] = '7'
-    elif str(series_title).endswith(' 8') or  str(series_title).endswith(' VIII') or str(foreign_title).endswith(' VIII') or 'áttunda þáttaröð' in str(entry['desc']).lower():
+    elif str(series_title_wseason).endswith(' 8') or  str(series_title_wseason).endswith(' VIII') or str(foreign_title).endswith(' VIII') or 'áttunda þáttaröð' in str(entry['desc']).lower():
       entry['season_num'] = '8'
-    elif str(series_title).endswith(' 9') or str(series_title).endswith(' IX') or str(foreign_title).endswith(' IX') or 'níunda þáttaröð' in str(entry['desc']).lower():
+    elif str(series_title_wseason).endswith(' 9') or str(series_title_wseason).endswith(' IX') or str(foreign_title).endswith(' IX') or 'níunda þáttaröð' in str(entry['desc']).lower():
       entry['season_num'] = '9'
-    elif str(series_title).endswith(' 10') or str(series_title).endswith(' XX') or str(foreign_title).endswith(' XX') or 'tíunda þáttaröð' in str(entry['desc']).lower():
+    elif str(series_title_wseason).endswith(' 10') or str(series_title_wseason).endswith(' XX') or str(foreign_title).endswith(' XX') or 'tíunda þáttaröð' in str(entry['desc']).lower():
       entry['season_num'] = '10'
 
     # Create the episode numbers programatically to ensure consistency if we're dealing with multi-episode program
@@ -1215,6 +1216,22 @@ def getVodSeriesSchedule(sid, _, imdb_cache, imdb_orignal_titles):
     total_episodes = total_episodes - 1
 
   return schedule
+
+#
+# Removes any season number related suffixes for a given series title
+# Ex. Monsurnar 1 => Monsurnar   
+#     Hvolpasveitin IV => Hvolpasveitin
+def trimSeasonNumberSuffix(series_title):
+  prefixes = [' I', ' II', ' III', ' IV', ' V', ' VI', ' VII', ' VIII', ' IX', ' X', ' XI', ' XII', ' 1', ' 2', ' 3', ' 4', ' 5', ' 6', ' 7', ' 8', ' 9', ' 10', ' 11', ' 12']
+  for prefix in prefixes:
+    new_series_title = series_title.removesuffix(prefix)
+    if len(new_series_title) < len(series_title):
+      return new_series_title
+    series_title = new_series_title
+
+  return series_title
+    
+
 
 def getGroup(regex, group_name, haystack):
   for match in re.finditer(regex, haystack):
@@ -1515,7 +1532,7 @@ def runMain():
       if not item['subtitles'] is None and len(item['subtitles']) > 0:
         try:
           downloadSubtitlesFiles(item['subtitles'], local_filename, display_title, item)
-        except ex:
+        except Exception as ex:
           print("Error: Could not download subtitle files for item, "+item['title'])
           continue
     
