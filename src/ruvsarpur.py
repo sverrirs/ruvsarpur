@@ -641,6 +641,11 @@ def parseArguments():
   
   parser.add_argument("-o", "--output", help="The path to the folder where the downloaded files should be stored",
                                         type=str)
+  
+  parser.add_argument("--suffix", help="Optional suffix to append to the output filename (useful if for some reason some files are named the same), NOTE make sure the suffix starts with a space character!",
+                                  default="",
+                                  type=str)
+
   parser.add_argument("--sid", help="The series ids for the tv series that should be downloaded",
                                type=str, nargs="+")
   parser.add_argument("--pid", help="The program ids for the program entries that should be downloaded",
@@ -805,7 +810,7 @@ def createShowTitle(show, include_original_title=False, use_plex_formatting=Fals
 
 RE_CAPTURE_YEAR_FROM_DESCRIPTION = re.compile(r' frá (?P<year>\d{4})', re.IGNORECASE)
 
-def createLocalFileName(show, include_original_title=False, use_plex_formatting=False):
+def createLocalFileName(show, include_original_title=False, use_plex_formatting=False, file_name_suffix=""):
   # Create the show title
   show_title = createShowTitle(show, include_original_title, use_plex_formatting)
 
@@ -829,10 +834,10 @@ def createLocalFileName(show, include_original_title=False, use_plex_formatting=
       #   \show_title\series_title (original-title) - part1.mp4
       #   \show_title\series_title (original-title) - part2.mp4
       if( 'ep_num' in show and 'ep_total' in show and int(show['ep_total']) > 1):
-        return f"{sanitizeFileName(show_title)}{sep}{sanitizeFileName(series_title)}{original_title}{imdb_year_part}{imdb_id_part} - part{str(show['ep_num']).zfill(2)}.mp4"
+        return f"{sanitizeFileName(show_title)}{file_name_suffix}{sep}{sanitizeFileName(series_title)}{original_title}{file_name_suffix}{imdb_year_part}{imdb_id_part} - part{str(show['ep_num']).zfill(2)}.mp4"
       else:
         # Just normal single file movie
-        return f"{sanitizeFileName(show_title)}{sep}{sanitizeFileName(series_title)}{original_title}{imdb_year_part}{imdb_id_part}.mp4"
+        return f"{sanitizeFileName(show_title)}{file_name_suffix}{sep}{sanitizeFileName(series_title)}{original_title}{file_name_suffix}{imdb_year_part}{imdb_id_part}.mp4"
     elif( 'is_sport' in show and show['is_sport']):
       # Special handling for sporting events
       # Example
@@ -846,7 +851,7 @@ def createLocalFileName(show, include_original_title=False, use_plex_formatting=
          not formatted_showtime in sport_show_title  # Icelandic dates are usually on the form dd.mm.yyyy not yyyy.mm.dd
         ):
         sport_show_title = f"{sport_show_title} ({formatted_showtime})"
-      return f"{sanitizeFileName(show_title)}{sep}Season 01{sep}{sport_show_title.replace(':','.')}.mp4"
+      return f"{sanitizeFileName(show_title)}{sep}Season 01{sep}{sport_show_title.replace(':','.')}{file_name_suffix}.mp4"
     elif( 'ep_num' in show and 'ep_total' in show and int(show['ep_total']) > 1):
       # This is an episode 
       # Plex formatting creates a local filename according to the rules defined here
@@ -856,17 +861,17 @@ def createLocalFileName(show, include_original_title=False, use_plex_formatting=
       #   \show_title\Season 01\series_title (original-title) - s01e01.mp4
       # or 
       #    \show_title\Season 01\series_title (original-title) - showtime [pid].mp4
-      return "{0}{sep}Season {4}{sep}{1}{2} - s{4}e{3}{imdb_id_part}.mp4".format(sanitizeFileName(show_title), sanitizeFileName(series_title), original_title, str(show['ep_num']).zfill(2), str(show['season_num'] if 'season_num' in show else 1).zfill(2), sep=sep, imdb_id_part=imdb_id_part)
+      return "{0}{sep}Season {4}{sep}{1}{2} - s{4}e{3}{file_name_suffix}{imdb_id_part}.mp4".format(sanitizeFileName(show_title), sanitizeFileName(series_title), original_title, str(show['ep_num']).zfill(2), str(show['season_num'] if 'season_num' in show else 1).zfill(2), sep=sep, imdb_id_part=imdb_id_part, file_name_suffix=file_name_suffix)
     else:
-      return "{0}{sep}{1}{2} - {3} - [{4}]{imdb_id_part}.mp4".format(sanitizeFileName(show_title), sanitizeFileName(series_title), original_title, sanitizeFileName(show['showtime'][:10]), sanitizeFileName(show['pid']), sep=sep, imdb_id_part=imdb_id_part)
+      return "{0}{sep}{1}{2} - {3} - [{4}]{file_name_suffix}{imdb_id_part}.mp4".format(sanitizeFileName(show_title), sanitizeFileName(series_title), original_title, sanitizeFileName(show['showtime'][:10]), sanitizeFileName(show['pid']), sep=sep, imdb_id_part=imdb_id_part, file_name_suffix=file_name_suffix)
       
   else:
     # Create the local filename, if not multiple episodes then
     # append the date and pid to the filename to avoid conflicts
     if( 'ep_num' in show ):
-      local_filename = "{0}.mp4".format(show_title)
+      local_filename = "{0}{1}.mp4".format(show_title, file_name_suffix)
     else:
-      local_filename = "{0} - {1} ({2}).mp4".format(show_title, show['showtime'][:10], show['pid'])
+      local_filename = "{0} - {1} ({2}){3}.mp4".format(show_title, show['showtime'][:10], show['pid'], file_name_suffix)
 
   # Clean up any possible characters that would interfere with the local OS filename rules
   return sanitizeFileName(local_filename)
@@ -904,14 +909,28 @@ def getVodSchedule(existing_schedule, args_incremental_refresh=False, imdb_cache
 
   # Start with getting all the series available on RUV through their API, this gives us basic information about each of the series
   # https://api.ruv.is/api/programs/tv/all
+  # as of 2024-01-15 this API is now 
+  # https://api.ruv.is/api/programs/featured/tv
 
   # Now for each series we request the series information, to obtain more than the basic info, 
   # note: today there is a single episode returned which cannot be used when dealing with multi episode series, we should request all episodes as a second call
   # https://api.ruv.is/api/programs/get_ids/32978
 
-  ruv_api_url_all = 'https://api.ruv.is/api/programs/tv/all'
+  ruv_api_url_all = 'https://api.ruv.is/api/programs/featured/tv'
   r = __create_retry_session().get(ruv_api_url_all)  
-  data = r.json()
+  api_data = r.json()
+
+  # Now the api returns everything categorised into panels
+  all_panel_data= api_data['panels'] if 'panels' in api_data else None
+
+  data = []
+  # Combine all 
+  for panel_data in all_panel_data:
+    if 'programs' in panel_data:
+      data.extend(panel_data['programs'])
+
+  # Remove all duplicate series from the list
+  data = list({item['id']:item for item in data}.values())
 
   schedule = {}  
 
@@ -1038,7 +1057,8 @@ def getVodSeriesSchedule(sid, _, imdb_cache, imdb_orignal_titles):
   # Determine the type
   series_type = "documentary" if isDocumentary else "movie" if isMovie else "tvshow" if not isSport or 'leiknir-thaettir' in prog['cat_slugs'] else None
 
-  series_title = trimSeasonNumberSuffix(prog['title'])
+  # Only trim out the season number if we are not dealing with movies, otherwise we will trim off the number in movies such as "Die Hard 1" and "Die Hard 2" and they'll just be "Die Hard"
+  series_title = prog['title'] if isMovie else trimSeasonNumberSuffix(prog['title'])
   series_title_wseason = prog['title']
   series_description = prog['short_description']
   series_shortdescription = prog['description']
@@ -1418,7 +1438,7 @@ def runMain():
     curr_item = 1
     for item in download_list:
       # Get a valid name for the save file
-      local_filename = createLocalFileName(item, args.originaltitle, args.plex)
+      local_filename = createLocalFileName(item, args.originaltitle, args.plex, args.suffix)
       
       # Create the display title for the current episode (used in console output)
       display_title = "{0} of {1}: {2}".format(curr_item, total_items, createShowTitle(item, args.originaltitle)) 
