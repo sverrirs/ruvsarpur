@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 # coding=utf-8
-__version__ = "13.0.0"
+__version__ = "13.0.1"
 # When modifying remember to issue a new tag command in git before committing, then push the new tag
-#   git tag -a v13.0.0 -m "v13.0.0"
+#   git tag -a v13.0.1 -m "v13.0.1"
 #   git push origin master --tags
 """
 Python script that allows you to download TV shows off the Icelandic RÚV Sarpurinn website.
@@ -513,9 +513,10 @@ def download_m3u8_playlist_using_ffmpeg(ffmpegexec, playlist_url, playlist_fragm
     ep_description = ''
 
     # Find the series description and favour the longer description
-    series_description = videoInfo['desc']
-    if( len(videoInfo['series_sdesc']) > len(series_description)):
-      series_description = videoInfo['series_sdesc']
+    series_description = videoInfo['desc'] if videoInfo['desc'] is not None else videoInfo['series_desc'] if 'series_desc' in videoInfo  else None
+    if 'series_sdesc' in videoInfo and videoInfo['series_sdesc'] is not None:
+      if( series_description is None or (videoInfo['series_sdesc'] is not None and len(videoInfo['series_sdesc']) > len(series_description))):
+        series_description = videoInfo['series_sdesc']
 
     # Description for movies, we want the longer version of
     if videoInfo['is_movie'] or videoInfo['is_docu']:
@@ -1061,7 +1062,7 @@ def getVodSeriesSchedule(sid, _, imdb_cache, imdb_orignal_titles):
   series_title = prog['title'] if isMovie else trimSeasonNumberSuffix(prog['title'])
   series_title_wseason = prog['title']
   series_description = prog['short_description']
-  series_shortdescription = prog['description']
+  series_shortdescription = prog['description'] if prog['description'] is not None else series_description
   series_image = formatCoverArtResolutionMacro(prog['image']) if 'image' in prog else None
   portrait_image = formatCoverArtResolutionMacro(prog['portrait_image']) if 'portrait_image' in prog else None
   foreign_title = prog['foreign_title']
