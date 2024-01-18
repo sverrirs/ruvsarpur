@@ -58,6 +58,8 @@ from itertools import (takewhile,repeat) # To count lines for the extremely larg
 from requests.packages.urllib3.exceptions import InsecureRequestWarning
 requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
 
+import utilities
+
 # Lambdas as shorthands for printing various types of data
 # See https://pypi.python.org/pypi/termcolor for more info
 color_title = lambda x: colored(x, 'cyan', 'on_grey')
@@ -896,6 +898,12 @@ def findffmpeg(path_to_ffmpeg_install=None, working_dir=None):
   bin_dist = os.path.join(working_dir, "..","bin","ffmpeg.exe" if platform.system() == 'Windows' else 'ffmpeg')
   if os.path.isfile(bin_dist):
     return str(Path(bin_dist).resolve())
+  
+  # Attempt to find ffmpeg in the environment
+  try:
+      return utilities.get_ffmpeg_location()
+  except Exception:
+      pass # Ignoring the exception
   
   # Throw an error
   raise ValueError('Could not locate FFMPEG install, please use the --ffmpeg switch to specify the path to the ffmpeg executable on your system.')
