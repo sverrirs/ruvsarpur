@@ -242,7 +242,7 @@ These tags and their contents are supported by most mainstream library managemen
 
 
 # Integration with Plex MediaServer
-When using the `--plex` the script offers compatibility with a local installation of the Plex Media server, https://www.plex.tv/. The script can download, label and organize its downloaded media according to the Plex media server rules to ensure that all tv-series and movies can be read and are stored in compatible Plex library structures.
+The script offers compatibility with a local installation of the Plex Media server, https://www.plex.tv/ by using the `--plex` switch. With the switch on the script will download, label and organize its downloaded media according to the Plex media server rules to ensure that all tv-series and movies can be read and are stored in compatible Plex library structures.
 
 See more about naming and organization rules for Plex on their website, https://support.plex.tv/articles/naming-and-organizing-your-tv-show-files/
 
