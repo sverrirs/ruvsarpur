@@ -3,7 +3,7 @@
 </p>
 
 # RÚV Sarpur
-[`ruvsarpur.py`](#ruvsarpurpy) is a python script that allows you to list, search and download TV shows off the Icelandic RÚV Sarpurinn website. 
+[`ruvsarpur.py`](#ruvsarpurpy) is a python script that allows you to list, search and download TV shows off the Icelandic RÚV Sarpurinn website. The script is operated solely through a windows or linux command prompt.
 
 [`webvtttosrt.py`](#webvtttosrtpy) is a python script that can convert webvtt and vtt files to the .srt subtitles format. (This format is used by the RÚV website for some episodes).
 
@@ -11,13 +11,37 @@ Project website at https://sverrirs.github.io/ruvsarpur/
 
 If you are intending on using this tool outside of Iceland then I recommend a [VPN connection](http://www.expressrefer.com/refer-a-friend/30-days-free/?referrer_id=11147993). Its setup is discussed in more detail in a section near the end of this document
 
+- [RÚV Sarpur](#rúv-sarpur)
+- [Demo](#demo)
+- [Requirements](#requirements)
+- [Finding and listing shows](#finding-and-listing-shows)
+  - [Incremental updates](#incremental-updates)
+  - [Finding shows by name](#finding-shows-by-name)
+- [Downloading shows](#downloading-shows)
+- [Choosing video quality](#choosing-video-quality)
+- [Advanced uses](#advanced-uses)
+- [Scheduling downloads](#scheduling-downloads)
+  - [Downloading only a particular season of a series](#downloading-only-a-particular-season-of-a-series)
+- [Embedding media information in MP4 metadata tags](#embedding-media-information-in-mp4-metadata-tags)
+- [Integration with Plex MediaServer](#integration-with-plex-mediaserver)
+  - [Downloading of series and movie posters and splash screens](#downloading-of-series-and-movie-posters-and-splash-screens)
+  - [Integration with IMDB for correct series and movie names](#integration-with-imdb-for-correct-series-and-movie-names)
+- [Frequently Asked Questions](#frequently-asked-questions)
+    - [I get an AttributeError when executing the script](#i-get-an-attributeerror-when-executing-the-script)
+    - [I keep getting a message `SHOW_TITLE not found on server (pid=PID_NUMBER)` when trying to download using your script.](#i-keep-getting-a-message-show_title-not-found-on-server-pidpid_number-when-trying-to-download-using-your-script)
+- [Using OpenVPN to automatically connect to a VPN if necessary](#using-openvpn-to-automatically-connect-to-a-vpn-if-necessary)
+- [webvtttosrt.py](#webvtttosrtpy)
+  - [How to use](#how-to-use)
+  - [Conversion example](#conversion-example)
+
+
 # Demo
 <p align="center">
   <img src="https://raw.githubusercontent.com/sverrirs/ruvsarpur/master/img/demo01.gif" alt="Usage Demo" title="Usage Demo">
 </p>
 
 # Requirements
-Python version 3.x
+Python version 3.9 or newer, running the latest version is highly recommended.
 
 Before first use make sure you install all requirements using 
 
@@ -27,12 +51,9 @@ pip install -r requirements.txt
 
 > If you run into trouble installing the python-levenstein package (it is optional) then check out this solution on StackOverflow http://stackoverflow.com/a/33163704
 
-*This tool includes the ffmpeg video processing kit. If you are on any other platform than Windows 64bit you will need to [download the binary executable of ffmpeg](https://www.ffmpeg.org/download.html) for your operating system from the official website and then specify its path using the `--ffmpeg` command line parameter.*
+*This tool includes the ffmpeg video processing kit. If you are on any other platform than Windows 64bit you will need to [download the binary executable of ffmpeg](https://www.ffmpeg.org/download.html) for your operating system from the official website. Then either add the ffmpeg tool to your PATH environment variable or alternatively specify its path explicitly using the `--ffmpeg` command line parameter.*
 
-# ruvsarpur.py
-This is a python script that allows you to list, search and download TV shows off the Icelandic RÚV Sarpurinn website. It is operated solely through a windows or linux command prompt.
-
-## Finding and listing shows
+# Finding and listing shows
 After downloading the script can be run by typing in
 ```
 python ruvsarpur.py --help
@@ -54,6 +75,12 @@ The script stores, by default, all of its config files in the current user home 
 python ruvsarpur.py --portable --list
 ```
 
+## Incremental updates
+The full refresh of the VOD catalog using the `--refresh` switch can be very time consuming. In cases where the script is run on a frequent intra-day schedule the `--incremental` switch can be added. When this switch is used the script attempts to perform a fast incremental intra-day refresh. 
+
+Setting this switch instructs the refresh mechanism to only download information for items that are new since the last full TV schedule refresh from the same day. If the current date when the refreh is run is newer than the latest refresh date stored then this option has no effect and a full refresh is always performed. 
+
+## Finding shows by name
 To find shows by title use the `--find` argument
 ```
 python ruvsarpur.py --list --find "Hvolpa"
@@ -83,9 +110,9 @@ You can include the optional `--desc` switch to display a short description of e
 python ruvsarpur.py --list --find "Hvolpa" --desc
 ```
 
-## Downloading shows
+# Downloading shows
 
-To download shows you can either use the `sid` (series id) or the `pid` (program id) to select what to download.
+To download shows you can either use the `sid` (series id), the `pid` (program id) to select what to download. Alternatively it is also possible to use the `--find` switch directly but that may result in the script downloading additional material that may match your search string as well.
 
 Using the `--sid` will download all available episodes in the series
 ```
@@ -123,7 +150,7 @@ When this switch is specified the script will check to see if the video file exi
 python ruvsarpur.py --pid 4849075 --checklocal
 ```
 
-## Choosing video quality
+# Choosing video quality
 
 The script automatically attempts to download videos using the 'HD1080' video quality for all download streams, this is equivilent of Full-HD resolution or 3600kbps. This setting will give you the best possible offline viewing experience and the best video and audio quality when casting to modern TVs.
 
@@ -138,14 +165,12 @@ The available values are:
 
 | Value | Description | kbps |
 | ----- | ----- | ----- |
-| `"Normal"` | Normal quality expected in a standard definition broadcast, works well on most devices. This is the default. | 1200kbps |
+| `"Normal"` | Normal quality expected in a standard definition broadcast, works well on most devices. | 1200kbps |
 | `"HD720"` | 720p good quality, intended for HD-ready devices | 2400kbps |
-| `"HD1080"` | 1080p very good quality intended for newer devices marked as Full-HD resolution. This produces very big files. | 3600kbps |
+| `"HD1080"` | 1080p very good quality intended for newer devices marked as Full-HD resolution. This produces very big files.  This is the default. | 3600kbps |
 
 
-## Advanced uses
-
-*Note: As of v7.0.0 neither `--category` or `--days` are supported anymore.*
+# Advanced uses
 
 The `--new` flag limits the search and downloads to only new shows (e.g. shows that have just aired their first episode in a new multi-episode series). The example below will only list new children's shows on the TV schedule. 
 ```
@@ -170,7 +195,7 @@ Found 2 shows
 ```
 
 
-## Scheduling downloads
+# Scheduling downloads
 You can schedule this script to run periodically to download new episodes in a series. To have the script correctly handle downloading re-runs and new seasons then it is recommended to use the `--find` option and specify the series title.
 
 ```
@@ -182,24 +207,80 @@ python ruvsarpur.py --find "Hvolpasveitin" -o "c:\videos\ruv\hvolpasveit"
 > `chcp 1252`
 > Otherwise the icelandic character set will not be correctly understood when the batch file is run
 
-### Downloading only a particular season of a series
+## Downloading only a particular season of a series
 In the case you only want to download a particular run of a series then you should use the `--sid` option to monitor a particular tv series and `-o` to set the directory to save the video file into.
 
 ```
 python ruvsarpur.py --sid 18457 -o "c:\videos\ruv\hvolpasveit-season-1"
 ```
 
-## RÚV Video-On-Demand (VOD) service features
-*Note: As of v7.0.0 the script only supports VOD and the `--onlyvod` option has been removed*
+# Embedding media information in MP4 metadata tags
+The script embedds information from the RÚV source listing into the MP4 video file using the following standard MP4 files metadata tags. 
+- title
+  - The title of the movie or incase of a tv-show or sports event the episode title.
+- comment
+  - Contains a special encoding of the program id and series id (pid and sid) to allow for accurate matching by other scripts, format `ruvinfo:pid:sid`
+- synopis
+  - The movie synopsis/description or in case of a tv-show the episode or series description, for sports events the sports type and the date and if available the teams competing.
+- show
+  - Only for tv-shows or sports events, the title of the series, i.e. "The Simpsons"
+- date
+  - Only for movies or documentaries, the year that the movie was released.
+- episode_id
+  - The episode number or episode name (used for display)
+- episode_sort
+  - The episode number (within the season), used for sorting and not displayed.
+- season_number
+  - The season number, used for sorting
+- media_type
+  - The type of content, one of ['Movie', 'Sports', 'TV Show']
 
-## Frequently Asked Questions
+These tags and their contents are supported by most mainstream library management tools and video players, including Plex and iTunes. 
 
-#### I keep getting a message `SHOW_TITLE not found on server (pid=PID_NUMBER)` when trying to download using your script.
+
+> MP4 media tagging can be completely disabled by using the `--nometadata` switch. It is not recommended to switch metadata embedding off unless you are having problems with this feature.
+
+
+# Integration with Plex MediaServer
+When using the `--plex` the script offers compatibility with a local installation of the Plex Media server, https://www.plex.tv/. The script can download, label and organize its downloaded media according to the Plex media server rules to ensure that all tv-series and movies can be read and are stored in compatible Plex library structures.
+
+See more about naming and organization rules for Plex on their website, https://support.plex.tv/articles/naming-and-organizing-your-tv-show-files/
+
+
+## Downloading of series and movie posters and splash screens
+When using the `--plex` switch the script will attempt to download available posters and episode thumbnails from the RÚV website as well. This feature is on by default and cannot be turned off as it significantly improves the quality of your media library. 
+
+A full refresh of all metadata, posters and artwork in your library is possible without triggering a re-download of video contents by using the `--novideo` switch. 
+
+```
+python ruvsarpur.py --find "Hvolpasveit" -o "c:\videos\ruv\" --novideo
+```
+
+Will perform a full refresh of all metadata and artwork for Hvolpasveitin, including downloading posters and episode stills.
+
+## Integration with IMDB for correct series and movie names
+The script attempts to match shows and movies to the correct IMDB ID. This is done based on the shows title. For non-english shows this matching can be improved drastically by using the `--imdbfolder` hand having it point to a local copy of the `title.basics.tsv` file that can be obtained from https://www.imdb.com/interfaces/.
+
+The script will warn you to update this file when the local file is older than 6 months.
+
+# Frequently Asked Questions
+
+### I get an AttributeError when executing the script
+_Cause_: There may be a new python version dependency for the script (i.e. the script now uses features from a newer Python version than you have installed)
+
+A common symptom is an exception such as 
+```
+AttributeError: 'str' object has no attribute 'removesuffix'
+```
+
+Make sure you always run the most latest Python version on your machine, see https://www.python.org/downloads/. If the problem persists after upgrading Python, please create an [issue](https://github.com/sverrirs/ruvsarpur/issues/new/choose).
+
+### I keep getting a message `SHOW_TITLE not found on server (pid=PID_NUMBER)` when trying to download using your script.
 _Cause_: The file is not available on the RÚV servers.
 
 The script performs an optimistic attempt to locate any show that is listed in the broadcasting programme. However the files are not guaranteed to be still available on the RÚV servers. This is the error that is shown in those cases.
 
-## Using OpenVPN to automatically connect to a VPN if necessary
+# Using OpenVPN to automatically connect to a VPN if necessary
 In case you want your script to be run over a [VPN connection](http://www.expressrefer.com/refer-a-friend/30-days-free/?referrer_id=11147993) then it is recommended that you use the `OpenVPN` software. It is widely supported by VPN providers and can be easily used via command line.
 
 Below is an example of how to integrate a VPN connection sequence before running the ruvsarpur.py downloader on Windows
