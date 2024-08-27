@@ -634,7 +634,7 @@ def printTvShowDetails(args, show):
 
   print( color_pid(show['pid'])+ ": "+color_title(createShowTitle(show, args.originaltitle)) + vodmark)
   print( color_sid(show['sid'].rjust(7)) + ": Sýnt "+show['showtime'][:-3] )
-  if( args.desc and 'desc' in show ):
+  if( args.desc and show.get('desc', None) is not None):
     for desc_line in textwrap.wrap(show['desc'], width=60):
       print( "           "+color_description(desc_line) )
   print("")
