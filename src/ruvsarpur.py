@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # coding=utf-8
-__version__ = "13.1.0"
+__version__ = "14.0.0"
 # When modifying remember to issue a new tag command in git before committing, then push the new tag
 #   git tag -a v13.1.0 -m "v13.1.0"
 #   git push origin master --tags
@@ -370,30 +370,16 @@ def download_file(url, local_filename, display_title, keeppartial = False ):
     if( r.status_code != 200 ):
       return None
     
-    total_size = int(r.headers['Content-Length'])
-    total_size_mb = str(int(total_size/1024.0/1024.0))
-    completed_size = 0
-        
-    #if( total_size > 1024):
-    #  print("{0} | Total: {1} MB".format(color_title(display_title), total_size_mb))
-    #  printProgress(completed_size, total_size, prefix = 'Downloading:', suffix = 'Starting', barLength = 25)
-    
     with open(local_filename, 'wb') as f:
       for chunk in r.iter_content(chunk_size=1024): 
         if chunk: # filter out keep-alive new chunks
           f.write(chunk)
-          completed_size += 1024
-    #      if( total_size > 1024):
-    #        printProgress(completed_size, total_size, prefix = 'Downloading:', suffix = 'Working ', barLength = 25)
     
-    # Write a final completed line for the progress bar to signify that the operation is done
-    #printProgress(completed_size, completed_size, prefix = 'Downloading:', suffix = 'Complete', barLength = 25, color = False)
-    
-    # Write one extra line break after operation finishes otherwise the subsequent prints will end up in the same line
-    #sys.stdout.write('\n')
     return local_filename
-  except:
+  except Exception as ex:
     print(os.linesep) # Double new line as otherwise the error message is squished to the download progress
+    print(ex)
+    traceback.print_stack()
     if( not keeppartial ):
       print( "Interrupted: Deleting partial file '{0}'".format(ntpath.basename(local_filename)))
       try:
@@ -780,7 +766,7 @@ def getExistingTvSchedule(tv_file_name):
     
 def sanitizeFileName(local_filename, sep=" "):
   #These are symbols that are not "kosher" on a NTFS filesystem.
-  local_filename = re.sub(r"[\"/:<>|?*\n\r\t\x00]", sep, local_filename)
+  local_filename = re.sub(r"[\.\,\';\"/:<>|?*\n\r\t\x00]", sep, local_filename)
   return local_filename.strip()
 
 # Removes a substring from end of string, see https://stackoverflow.com/a/3663505/779521
@@ -793,21 +779,21 @@ def rchop(s, suffix):
   return s
 
 def createShowTitle(show, include_original_title=False, use_plex_formatting=False):
-  show_title = show['title']
+  show_title = sanitizeFileName(show['title'])
 
   # Always include original title if using plex formatting, but we only want the series title, without the (1 af xxx)
   if( use_plex_formatting ):
     
     # If plex we always want to get out of the default title as the default includes the (1 af 2) suffix
-    show_title = show['series_title']
+    show_title = sanitizeFileName(show['series_title'])
 
     # Append the original if it is available (usually that contains more accurate season info than the icelandic title)
     if( 'original-title' in show and not show['original-title'] is None ):
-      show_title = "{0} - {1}".format(show['series_title'], rchop(show['original-title'], [' I', ' II', ' III', ' IV', ' V', ' VI', ' VII', ' VIII', ' IX']))
+      show_title = "{0} - {1}".format(sanitizeFileName(show['series_title']), rchop(sanitizeFileName(show['original-title']), [' I', ' II', ' III', ' IV', ' V', ' VI', ' VII', ' VIII', ' IX']))
   
   # If not plex then adhere to the original title flag if set
   elif( include_original_title and 'original-title' in show and not show['original-title'] is None ):
-    return "{0} - {1}".format(show['title'], show['original-title'])
+    return "{0} - {1}".format(sanitizeFileName(show['title']), sanitizeFileName(show['original-title']))
     
   return show_title
 
@@ -837,15 +823,15 @@ def createLocalFileName(show, include_original_title=False, use_plex_formatting=
       #   \show_title\series_title (original-title) - part1.mp4
       #   \show_title\series_title (original-title) - part2.mp4
       if( 'ep_num' in show and 'ep_total' in show and int(show['ep_total']) > 1):
-        return f"{sanitizeFileName(show_title)}{file_name_suffix}{sep}{sanitizeFileName(series_title)}{original_title}{file_name_suffix}{imdb_year_part}{imdb_id_part} - part{str(show['ep_num']).zfill(2)}.mp4"
+        return f"{sanitizeFileName(show_title)}{file_name_suffix}{sep}{sanitizeFileName(series_title)}{original_title}{file_name_suffix}{imdb_year_part}{imdb_id_part} - part{str(show['ep_num']).zfill(2)}"
       else:
         # Just normal single file movie
-        return f"{sanitizeFileName(show_title)}{file_name_suffix}{sep}{sanitizeFileName(series_title)}{original_title}{file_name_suffix}{imdb_year_part}{imdb_id_part}.mp4"
+        return f"{sanitizeFileName(show_title)}{file_name_suffix}{sep}{sanitizeFileName(series_title)}{original_title}{file_name_suffix}{imdb_year_part}{imdb_id_part}"
     elif( 'is_sport' in show and show['is_sport']):
       # Special handling for sporting events
       # Example
       #   \show_title\Season 2022\title - showtime[:10].mp4 unless the showtime is already present in the title of the episode
-      sport_show_title = show['title']
+      sport_show_title = sanitizeFileName(show['title'])
       
       formatted_showtime = f"{str(show['showtime'])[8:10]}.{str(show['showtime'])[5:7]}.{str(show['showtime'])[:4]}"
       if (
@@ -854,7 +840,7 @@ def createLocalFileName(show, include_original_title=False, use_plex_formatting=
          not formatted_showtime in sport_show_title  # Icelandic dates are usually on the form dd.mm.yyyy not yyyy.mm.dd
         ):
         sport_show_title = f"{sport_show_title} ({formatted_showtime})"
-      return f"{sanitizeFileName(show_title)}{sep}Season 01{sep}{sport_show_title.replace(':','.')}{file_name_suffix}.mp4"
+      return f"{sanitizeFileName(show_title)}{sep}Season 01{sep}{sport_show_title.replace(':','.')}{file_name_suffix}"
     elif( 'ep_num' in show and 'ep_total' in show and int(show['ep_total']) > 1):
       # This is an episode 
       # Plex formatting creates a local filename according to the rules defined here
@@ -864,20 +850,20 @@ def createLocalFileName(show, include_original_title=False, use_plex_formatting=
       #   \show_title\Season 01\series_title (original-title) - s01e01.mp4
       # or 
       #    \show_title\Season 01\series_title (original-title) - showtime [pid].mp4
-      return "{0}{sep}Season {4}{sep}{1}{2} - s{4}e{3}{file_name_suffix}{imdb_id_part}.mp4".format(sanitizeFileName(show_title), sanitizeFileName(series_title), original_title, str(show['ep_num']).zfill(2), str(show['season_num'] if 'season_num' in show else 1).zfill(2), sep=sep, imdb_id_part=imdb_id_part, file_name_suffix=file_name_suffix)
+      return "{0}{sep}Season {4}{sep}{1}{2} - s{4}e{3}{file_name_suffix}{imdb_id_part}".format(sanitizeFileName(show_title), sanitizeFileName(series_title), original_title, str(show['ep_num']).zfill(2), str(show['season_num'] if 'season_num' in show else 1).zfill(2), sep=sep, imdb_id_part=imdb_id_part, file_name_suffix=file_name_suffix)
     else:
-      return "{0}{sep}{1}{2} - {3} - [{4}]{file_name_suffix}{imdb_id_part}.mp4".format(sanitizeFileName(show_title), sanitizeFileName(series_title), original_title, sanitizeFileName(show['showtime'][:10]), sanitizeFileName(show['pid']), sep=sep, imdb_id_part=imdb_id_part, file_name_suffix=file_name_suffix)
+      return "{0}{sep}{1}{2} - {3} - [{4}]{file_name_suffix}{imdb_id_part}".format(sanitizeFileName(show_title), sanitizeFileName(series_title), original_title, sanitizeFileName(show['showtime'][:10]), sanitizeFileName(show['pid']), sep=sep, imdb_id_part=imdb_id_part, file_name_suffix=file_name_suffix)
       
   else:
     # Create the local filename, if not multiple episodes then
     # append the date and pid to the filename to avoid conflicts
     if( 'ep_num' in show ):
-      local_filename = "{0}{1}.mp4".format(show_title, file_name_suffix)
+      local_filename = "{0}{1}".format(show_title, file_name_suffix)
     else:
-      local_filename = "{0} - {1} ({2}){3}.mp4".format(show_title, show['showtime'][:10], show['pid'], file_name_suffix)
+      local_filename = "{0} - {1} ({2}){3}".format(show_title, show['showtime'][:10], show['pid'], file_name_suffix)
 
   # Clean up any possible characters that would interfere with the local OS filename rules
-  return sanitizeFileName(local_filename)
+  return "{0}.mp4".format(sanitizeFileName(local_filename))
 
 def isLocalFileNameUnique(local_filename):
   # Check to see if the filename specified already exists, must be a complete path
@@ -1563,6 +1549,8 @@ def runMain():
           downloadSubtitlesFiles(item['subtitles'], local_filename, display_title, item)
         except Exception as ex:
           print("Error: Could not download subtitle files for item, "+item['title'])
+          print(ex)
+          traceback.print_stack()
           continue
     
   finally:
