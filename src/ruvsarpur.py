@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 # coding=utf-8
-__version__ = "13.2.0"
+__version__ = "13.3.0"
 # When modifying remember to issue a new tag command in git before committing, then push the new tag
-#   git tag -a v13.2.0 -m "v13.2.0"
+#   git tag -a v13.3.0 -m "v13.3.0"
 #   git push origin master --tags
 """
 Python script that allows you to download TV shows off the Icelandic RÚV Sarpurinn website.
@@ -497,6 +497,10 @@ def download_m3u8_playlist_using_ffmpeg(ffmpegexec, playlist_url, playlist_fragm
   # see https://kdenlive.org/en/project/adding-meta-data-to-mp4-video/ and https://kodi.wiki/view/Video_file_tagging
   if not disable_metadata:
 
+    # Ensure that the local filename ends with a .mp4
+    if not local_filename.endswith('.mp4'):
+      local_filename += '.mp4'
+
     # Determine the description for the file
     ep_description = ''
 
@@ -602,7 +606,7 @@ def download_m3u8_playlist_using_ffmpeg(ffmpegexec, playlist_url, playlist_fragm
     ret.terminate()
     raise
 
-  printProgress(total_chunks, total_chunks, prefix = 'Downloading:', suffix = 'Complete', barLength = 25, color = False)
+  printProgress(total_chunks, total_chunks, prefix = 'Downloading:', suffix = 'Complete -> {0}'.format(local_filename), barLength = 25, color = False)
   # Write one extra line break after operation finishes otherwise the subsequent prints will end up in the same line
   sys.stdout.write('\n')
 
@@ -620,7 +624,7 @@ def printTvShowDetails(args, show):
 
   print( color_pid(show['pid'])+ ": "+color_title(createShowTitle(show, args.originaltitle)) + vodmark)
   print( color_sid(show['sid'].rjust(7)) + ": Sýnt "+show['showtime'][:-3] )
-  if( args.desc and 'desc' in show ):
+  if( args.desc and 'desc' in show and show['desc'] is not None ):
     for desc_line in textwrap.wrap(show['desc'], width=60):
       print( "           "+color_description(desc_line) )
   print("")
