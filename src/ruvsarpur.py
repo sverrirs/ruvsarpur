@@ -1323,6 +1323,76 @@ def loadImdbOriginalTitles(args_imdbfolder):
   print()
 
   return imdb_title_cache
+
+def searchForItemsInTvSchedule(args, schedule):
+  download_list = []
+    
+  for key, schedule_item in schedule.items():
+  
+    # Skip any items that aren't show items
+    if key == 'date' or not 'pid' in schedule_item:
+      continue
+    
+    candidate_to_add = None
+    # if the series id is set then find all shows belonging to that series
+    if( args.sid is not None ):
+      if( 'sid' in schedule_item and schedule_item['sid'] in args.sid):
+        candidate_to_add = schedule_item
+    elif( args.pid is not None ):
+      if( 'pid' in schedule_item and schedule_item['pid'] in args.pid):
+        candidate_to_add = schedule_item
+    elif( args.find is not None ):
+      if( 'title' in schedule_item and fuzz.partial_ratio( args.find, createShowTitle(schedule_item, args.originaltitle) ) > 85 ):
+        candidate_to_add = schedule_item
+      elif( 'title' in schedule_item and fuzz.partial_ratio( args.find, schedule_item['title'] ) > 85 ):
+        candidate_to_add = schedule_item
+      elif( 'series_title' in schedule_item and fuzz.partial_ratio( args.find, schedule_item['series_title'] ) > 85 ):
+        candidate_to_add = schedule_item
+      elif( 'original-title' in schedule_item and not schedule_item['original-title'] is None and fuzz.partial_ratio( args.find, schedule_item['original-title'] ) > 85 ):
+        candidate_to_add = schedule_item
+    else:
+      # By default if there is no filtering then we simply list everything in the schedule
+      candidate_to_add = schedule_item
+
+    # If the only new episode filter is set then only include shows that have recently started airing
+    if( args.new ):
+      # If the show is not a repeat show or hasn't got more than a single episode in total then it isn't considered a show so exclude it
+      if( not 'ep_num' in schedule_item or not 'ep_total' in schedule_item or int( schedule_item['ep_total']) < 2 or int(schedule_item['ep_num']) > 1 ):
+        candidate_to_add = None # If the show is beyond ep 1 then it cannot be considered a new show so i'm not going to add it
+
+    # Now process the adding of the show if all the filter criteria were satisified
+    if( candidate_to_add is not None ):
+        download_list.append(candidate_to_add)
+
+  return download_list
+
+
+def getVodSearchResults(search_query):
+
+  search_graphdata = '?operationName=getSearch&variables={"type":"tv","text":"'+str(search_query)+'"}&extensions={"persistedQuery":{"version":1,"sha256Hash":"823f9e99e09dadeca8896ea9f29374429e6fc3c4be2d2c2a93e7ce6dc65eec41"}}'
+  data = requestsVodDataRetrieveWithRetries(search_graphdata)
+
+  if data is None or len(data) < 1 or not 'data' in data or data['data'] is None or not 'Search' in data['data'] or data['data']['Search'] is None or len(data['data']['Search']) < 1:
+    print("Error: Could not retrieve search results from GraphQL url, unable to search for VOD details for query: "+str(search_query))
+    return None
+
+  return data['data']['Search']
+
+def createSeriesIdIndex(schedule):
+  series_index = {}
+
+  for ep_id in schedule:
+    try:
+      ep = schedule[ep_id]
+      sid = ep['sid'] if 'sid' in ep and ep['sid'] is not None else None
+      if( sid is None ):
+        continue
+      series_index[sid] = True
+    except Exception as ex:
+      continue # Just ignore all exceptions here, this usually happens for the date time entry
+  
+  return series_index
+  
     
 # The main entry point for the script
 def runMain():
@@ -1377,50 +1447,53 @@ def runMain():
     if( args.debug ):
       for key, schedule_item in schedule.items():
         printTvShowDetails(args, schedule_item)
-      
+
+    ########
     # Now determine what to download
-    download_list = []
-    
-    for key, schedule_item in schedule.items():
-    
-      # Skip any items that aren't show items
-      if key == 'date' or not 'pid' in schedule_item:
-        continue
-      
-      candidate_to_add = None
-      # if the series id is set then find all shows belonging to that series
-      if( args.sid is not None ):
-        if( 'sid' in schedule_item and schedule_item['sid'] in args.sid):
-          candidate_to_add = schedule_item
-      elif( args.pid is not None ):
-        if( 'pid' in schedule_item and schedule_item['pid'] in args.pid):
-          candidate_to_add = schedule_item
-      elif( args.find is not None ):
-        if( 'title' in schedule_item and fuzz.partial_ratio( args.find, createShowTitle(schedule_item, args.originaltitle) ) > 85 ):
-          candidate_to_add = schedule_item
-        elif( 'title' in schedule_item and fuzz.partial_ratio( args.find, schedule_item['title'] ) > 85 ):
-          candidate_to_add = schedule_item
-        elif( 'original-title' in schedule_item and not schedule_item['original-title'] is None and fuzz.partial_ratio( args.find, schedule_item['original-title'] ) > 85 ):
-          candidate_to_add = schedule_item
-      else:
-        # By default if there is no filtering then we simply list everything in the schedule
-        candidate_to_add = schedule_item
-
-      # If the only new episode filter is set then only include shows that have recently started airing
-      if( args.new ):
-        # If the show is not a repeat show or hasn't got more than a single episode in total then it isn't considered a show so exclude it
-        if( not 'ep_num' in schedule_item or not 'ep_total' in schedule_item or int( schedule_item['ep_total']) < 2 or int(schedule_item['ep_num']) > 1 ):
-          candidate_to_add = None # If the show is beyond ep 1 then it cannot be considered a new show so i'm not going to add it
-
-      # Now process the adding of the show if all the filter criteria were satisified
-      if( candidate_to_add is not None ):
-          download_list.append(candidate_to_add)
-      
+    download_list = searchForItemsInTvSchedule(args, schedule)
     total_items = len(download_list)
+
+    # Perform an optimistic search for the item and see if any of the results returned are series that have not been indexed, if so then index them
+    any_series_found_while_searching = False
+    if( total_items <= 0 ):
+      try:
+        # Create an inverse index for series ids for faster lookups
+        series_index = createSeriesIdIndex(schedule)
+
+        # For each of the series returned see if its series id is present in the current schedule, if not then perform a full program download for all episodes and search again
+        search_results = getVodSearchResults(args.find)
+        for search_result in search_results:
+          search_sid = search_result['id'] if 'id' in search_result and search_result['id'] is not None and len(search_result['id']) > 0 else None
+          if( search_sid is None):
+            continue
+
+          if search_sid in series_index:
+            continue
+
+          # We want to not override existing items in the schedule dictionary in case they are downloaded again
+          program_schedule = getVodSeriesSchedule(search_sid, None, None, None)
+          schedule.update(program_schedule)
+          any_series_found_while_searching = True
+
+      except Exception as ex:
+          print( "Unable to retrieve schedule for VOD program '{0}', no episodes will be available for download from this program.".format(args.find))
+
+    #######
+    # If new series were found, re-do the search
+    if( any_series_found_while_searching ):
+      
+      # Save the tv schedule as the most current one
+      if len(schedule) > 1 :
+        saveCurrentTvSchedule(schedule, tv_schedule_file_name)
+
+      download_list = searchForItemsInTvSchedule(args, schedule)
+      total_items = len(download_list)
+
+    # Now check for matches and if nothing is found exit
     if( total_items <= 0 ):
       print(f"Nothing found to download for {color_title(args.find) if args.find is not None else color_sid(args.sid) if args.sid is not None else color_pid(args.pid) if args.pid is not None else color_title('[No search term entered]')}")
       sys.exit(0)
-      
+            
     print( "Found {0} show(s)".format(total_items, ))
       
     # Sort the download list by show name and then by showtime
