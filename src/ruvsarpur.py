@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 # coding=utf-8
-__version__ = "14.0.0"
+__version__ = "14.1.0"
 # When modifying remember to issue a new tag command in git before committing, then push the new tag
-#   git tag -a v14.0.0 -m "v14.0.0"
+#   git tag -a v14.1.0 -m "v14.1.0"
 #   git push origin master --tags
 """
 Python script that allows you to download TV shows off the Icelandic RÚV Sarpurinn website.
@@ -1455,25 +1455,37 @@ def runMain():
 
     # Perform an optimistic search for the item and see if any of the results returned are series that have not been indexed, if so then index them
     any_series_found_while_searching = False
-    if( total_items <= 0 ):
+    # This is only possible if the user specified either find or sid arguments, pid cannot be used this way
+    if( total_items <= 0 and args.find is not None or args.sid is not None ):
       try:
         # Create an inverse index for series ids for faster lookups
         series_index = createSeriesIdIndex(schedule)
 
-        # For each of the series returned see if its series id is present in the current schedule, if not then perform a full program download for all episodes and search again
-        search_results = getVodSearchResults(args.find)
-        for search_result in search_results:
-          search_sid = search_result['id'] if 'id' in search_result and search_result['id'] is not None and len(search_result['id']) > 0 else None
-          if( search_sid is None):
-            continue
+        # Get the list of sids to check on, either from args.find or args.sid (args.sid can be an array of sids
+        search_sids = []
 
+        if not args.find is None:
+          # For each of the series returned see if its series id is present in the current schedule, if not then perform a full program download for all episodes and search again
+          search_results = getVodSearchResults(args.find)
+          for search_result in search_results:
+            search_sid = search_result['id'] if 'id' in search_result and search_result['id'] is not None and len(search_result['id']) > 0 else None
+            search_sids.append(search_sid)
+        elif not args.sid is None:
+          search_sids = args.sid
+
+        # Now iterate through the sids and attempt to download series information
+        for search_sid in search_sids:
+          if( search_sid is None):
+              continue
+          
           if search_sid in series_index:
             continue
 
-          # We want to not override existing items in the schedule dictionary in case they are downloaded again
+          # If the sid is directly specified then we just get that directly
           program_schedule = getVodSeriesSchedule(search_sid, None, None, None)
-          schedule.update(program_schedule)
-          any_series_found_while_searching = True
+          if not program_schedule is None and len(program_schedule) > 0:
+            schedule.update(program_schedule)
+            any_series_found_while_searching = True
 
       except Exception as ex:
           print( "Unable to retrieve schedule for VOD program '{0}', no episodes will be available for download from this program.".format(args.find))
