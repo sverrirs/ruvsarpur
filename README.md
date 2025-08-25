@@ -3,6 +3,9 @@
 </p>
 
 # RÚV Sarpur
+> [!NOTE]
+> The previously bundled ffmpeg executable for windows was removed in version **14.2.0**, you must now download it separately. See details in [Requirements](#requirements) below...
+> 
 [`ruvsarpur.py`](#ruvsarpurpy) is a python script that allows you to list, search and download TV shows off the Icelandic RÚV Sarpurinn website. The script is operated solely through a windows or linux command prompt.
 
 [`webvtttosrt.py`](#webvtttosrtpy) is a python script that can convert webvtt and vtt files to the .srt subtitles format. (This format is used by the RÚV website for some episodes).
@@ -51,7 +54,9 @@ pip install -r requirements.txt
 
 > If you run into trouble installing the python-levenstein package (it is optional) then check out this solution on StackOverflow http://stackoverflow.com/a/33163704
 
-*This tool includes the ffmpeg video processing kit. If you are on any other platform than Windows 64bit you will need to [download the binary executable of ffmpeg](https://www.ffmpeg.org/download.html) for your operating system from the official website. Then either add the ffmpeg tool to your PATH environment variable or alternatively specify its path explicitly using the `--ffmpeg` command line parameter.*
+
+> [!IMPORTANT]  
+> This tool relies on the **ffmpeg video processing kit**. The previously bundled ffmpeg executable for windows was removed in version 14.2.0. You now must therefore download the [binary executable of ffmpeg](https://www.ffmpeg.org/download.html) or [https://www.gyan.dev/ffmpeg/builds/](https://www.gyan.dev/ffmpeg/builds/) that is appropriate for your operating system from the official website. Then either add the ffmpeg tool to your PATH environment variable or in a `bin/` folder next to the script or alternatively specify its path explicitly using the `--ffmpeg` command line parameter. This was necessary as the latest ffmpeg (v8.0) release is simply too big.
 
 # Finding and listing shows
 After downloading the script can be run by typing in
