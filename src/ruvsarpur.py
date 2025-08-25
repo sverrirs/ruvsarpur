@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 # coding=utf-8
-__version__ = "14.1.0"
+__version__ = "14.2.0"
 # When modifying remember to issue a new tag command in git before committing, then push the new tag
-#   git tag -a v14.1.0 -m "v14.1.0"
+#   git tag -a v14.2.0 -m "v14.2.0"
 #   git push origin master --tags
 """
 Python script that allows you to download TV shows off the Icelandic RÚV Sarpurinn website.
@@ -1342,13 +1342,13 @@ def searchForItemsInTvSchedule(args, schedule):
       if( 'pid' in schedule_item and schedule_item['pid'] in args.pid):
         candidate_to_add = schedule_item
     elif( args.find is not None ):
-      if( 'title' in schedule_item and fuzz.partial_ratio( args.find, createShowTitle(schedule_item, args.originaltitle) ) > 85 ):
+      if( 'title' in schedule_item and fuzz.partial_ratio( args.find.lower(), createShowTitle(schedule_item, args.originaltitle).lower() ) > 85 ):
         candidate_to_add = schedule_item
-      elif( 'title' in schedule_item and fuzz.partial_ratio( args.find, schedule_item['title'] ) > 85 ):
+      elif( 'title' in schedule_item and fuzz.partial_ratio( args.find.lower(), schedule_item['title'].lower() ) > 85 ):
         candidate_to_add = schedule_item
-      elif( 'series_title' in schedule_item and fuzz.partial_ratio( args.find, schedule_item['series_title'] ) > 85 ):
+      elif( 'series_title' in schedule_item and fuzz.partial_ratio( args.find.lower(), schedule_item['series_title'].lower() ) > 85 ):
         candidate_to_add = schedule_item
-      elif( 'original-title' in schedule_item and not schedule_item['original-title'] is None and fuzz.partial_ratio( args.find, schedule_item['original-title'] ) > 85 ):
+      elif( 'original-title' in schedule_item and not schedule_item['original-title'] is None and fuzz.partial_ratio( args.find.lower(), schedule_item['original-title'].lower() ) > 85 ):
         candidate_to_add = schedule_item
     else:
       # By default if there is no filtering then we simply list everything in the schedule
@@ -1456,7 +1456,7 @@ def runMain():
     # Perform an optimistic search for the item and see if any of the results returned are series that have not been indexed, if so then index them
     any_series_found_while_searching = False
     # This is only possible if the user specified either find or sid arguments, pid cannot be used this way
-    if( total_items <= 0 and args.find is not None or args.sid is not None ):
+    if( args.find is not None or args.sid is not None ):
       try:
         # Create an inverse index for series ids for faster lookups
         series_index = createSeriesIdIndex(schedule)
@@ -1488,7 +1488,8 @@ def runMain():
             any_series_found_while_searching = True
 
       except Exception as ex:
-          print( "Unable to retrieve schedule for VOD program '{0}', no episodes will be available for download from this program.".format(args.find))
+          if( total_items <= 0 ):
+            print( "Unable to retrieve schedule for VOD program '{0}', no episodes will be available for download from this program.".format(args.find))
 
     #######
     # If new series were found, re-do the search
