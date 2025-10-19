@@ -683,7 +683,8 @@ def parseArguments():
 
   parser.add_argument("--novideo", help="Disables downloading of video content, restricts behavior to only downloading metadata, posters and subtitles.", action="store_true")
 
-  #parser.add_argument("--preferenglishsubs", help="Prefers downloading entries that have burnt in English subtitles available. This is true for some special schedule items. By default this is off.", action="store_true")
+  parser.add_argument("--includeenglishsubs", help="When set the system will also download entries that have burnt in English subtitles available. This is true for some special schedule items. By default this is off.", 
+                                             action="store_true")
 
   parser.add_argument("--ffmpeg",       help="Full path to the ffmpeg executable file", 
                                         type=str)
@@ -1359,6 +1360,14 @@ def searchForItemsInTvSchedule(args, schedule):
       # If the show is not a repeat show or hasn't got more than a single episode in total then it isn't considered a show so exclude it
       if( not 'ep_num' in schedule_item or not 'ep_total' in schedule_item or int( schedule_item['ep_total']) < 2 or int(schedule_item['ep_num']) > 1 ):
         candidate_to_add = None # If the show is beyond ep 1 then it cannot be considered a new show so i'm not going to add it
+
+    # Determine if this program is an english sub program and exclude it unless explicitly told to include
+    if( not args.includeenglishsubs and
+        'series_title' in schedule_item and 
+        ( fuzz.partial_ratio( 'with english subtitles', schedule_item['series_title'].lower() ) > 85 or
+         fuzz.partial_ratio( 'english subtitles', schedule_item['series_title'].lower() ) > 85
+        )):
+      continue
 
     # Now process the adding of the show if all the filter criteria were satisified
     if( candidate_to_add is not None ):

@@ -17,16 +17,20 @@ If you are intending on using this tool outside of Iceland then I recommend a [V
 - [RÚV Sarpur](#rúv-sarpur)
 - [Demo](#demo)
 - [Requirements](#requirements)
-- [Finding and listing shows](#finding-and-listing-shows)
+- [Getting started](#getting-started)
   - [Incremental updates](#incremental-updates)
   - [Finding shows by name](#finding-shows-by-name)
-- [Downloading shows](#downloading-shows)
-- [Choosing video quality](#choosing-video-quality)
+  - [Downloading shows](#downloading-shows)
+  - [Choosing video quality](#choosing-video-quality)
 - [Advanced uses](#advanced-uses)
-- [Scheduling downloads](#scheduling-downloads)
+  - [Downloading shows that have english subtitles](#downloading-shows-that-have-english-subtitles)
+  - [Only search recently added shows](#only-search-recently-added-shows)
+  - [Handling cleanup for download errors](#handling-cleanup-for-download-errors)
+  - [Including original shows name in output](#including-original-shows-name-in-output)
+  - [Scheduling downloads](#scheduling-downloads)
   - [Downloading only a particular season of a series](#downloading-only-a-particular-season-of-a-series)
-- [Embedding media information in MP4 metadata tags](#embedding-media-information-in-mp4-metadata-tags)
-- [Integration with Plex MediaServer](#integration-with-plex-mediaserver)
+  - [Embedding media information in MP4 metadata tags](#embedding-media-information-in-mp4-metadata-tags)
+- [Plex MediaServer Compatibility](#plex-mediaserver-compatibility)
   - [Downloading of series and movie posters and splash screens](#downloading-of-series-and-movie-posters-and-splash-screens)
   - [Integration with IMDB for correct series and movie names](#integration-with-imdb-for-correct-series-and-movie-names)
 - [Frequently Asked Questions](#frequently-asked-questions)
@@ -58,7 +62,7 @@ pip install -r requirements.txt
 > [!IMPORTANT]  
 > This tool relies on the **ffmpeg video processing kit**. The previously bundled ffmpeg executable for windows was removed in version 14.2.0. You now must therefore download the [binary executable of ffmpeg](https://www.ffmpeg.org/download.html) or [https://www.gyan.dev/ffmpeg/builds/](https://www.gyan.dev/ffmpeg/builds/) that is appropriate for your operating system from the official website. Then either add the ffmpeg tool to your PATH environment variable or in a `bin/` folder next to the script or alternatively specify its path explicitly using the `--ffmpeg` command line parameter. This was necessary as the latest ffmpeg (v8.0) release is simply too big.
 
-# Finding and listing shows
+# Getting started
 After downloading the script can be run by typing in
 ```
 python ruvsarpur.py --help
@@ -115,7 +119,7 @@ You can include the optional `--desc` switch to display a short description of e
 python ruvsarpur.py --list --find "Hvolpa" --desc
 ```
 
-# Downloading shows
+## Downloading shows
 
 To download shows you can either use the `sid` (series id), the `pid` (program id) to select what to download. Alternatively it is also possible to use the `--find` switch directly but that may result in the script downloading additional material that may match your search string as well.
 
@@ -155,7 +159,7 @@ When this switch is specified the script will check to see if the video file exi
 python ruvsarpur.py --pid 4849075 --checklocal
 ```
 
-# Choosing video quality
+## Choosing video quality
 
 The script automatically attempts to download videos using the 'HD1080' video quality for all download streams, this is equivilent of Full-HD resolution or 3600kbps. This setting will give you the best possible offline viewing experience and the best video and audio quality when casting to modern TVs.
 
@@ -177,14 +181,44 @@ The available values are:
 
 # Advanced uses
 
+## Downloading shows that have english subtitles
+Use `--includeenglishsubs` flag to have the script also download the version of series that have burn-in english subtitles. This setting is off by default.
+Adding this flag will download both the normal icelandic version without subtitles and also the version with the burn-in subtitles. There is no option to only download the english burn in version only.
+
+```
+python ruvsarpur.py --find "Felix & Klara" --originaltitle --includeenglishsubs --list
+```
+returns
+```
+Found 2 show(s)
+asl781: Felix & Klara (1 af 3)
+  36560: Sýnt 2025-10-05T20:20
+
+bfb23h: Felix & Klara (with English subtitles) (1 af 3) - Felix & Klara
+  38519: Sýnt 2025-10-05T20:20
+```
+
+while the normal search
+```
+python ruvsarpur.py --find "Felix & Klara" --originaltitle --list
+```
+returns
+```
+Found 1 show(s)
+asl781: Felix & Klara (1 af 3)
+  36560: Sýnt 2025-10-05T20:20
+```
+
+## Only search recently added shows
 The `--new` flag limits the search and downloads to only new shows (e.g. shows that have just aired their first episode in a new multi-episode series). The example below will only list new children's shows on the TV schedule. 
 ```
 python ruvsarpur.py --list --new
 ```
 
+## Handling cleanup for download errors
 The `--keeppartial` flag can be used to keep partially downloaded files in case of errors, if omitted then the script deletes any incomplete partially downloaded files if an error occurs (this is the default behavior).
 
-
+## Including original shows name in output
 Use `--originaltitle` flag to include the original show name (usually the foreign title) in the output file.
 ```
 python ruvsarpur.py --list --find "Hvolpa" --originaltitle
@@ -200,7 +234,7 @@ Found 2 shows
 ```
 
 
-# Scheduling downloads
+## Scheduling downloads
 You can schedule this script to run periodically to download new episodes in a series. To have the script correctly handle downloading re-runs and new seasons then it is recommended to use the `--find` option and specify the series title.
 
 ```
@@ -219,7 +253,7 @@ In the case you only want to download a particular run of a series then you shou
 python ruvsarpur.py --sid 18457 -o "c:\videos\ruv\hvolpasveit-season-1"
 ```
 
-# Embedding media information in MP4 metadata tags
+## Embedding media information in MP4 metadata tags
 The script embedds information from the RÚV source listing into the MP4 video file using the following standard MP4 files metadata tags. 
 - title
   - The title of the movie or incase of a tv-show or sports event the episode title.
@@ -246,7 +280,7 @@ These tags and their contents are supported by most mainstream library managemen
 > MP4 media tagging can be completely disabled by using the `--nometadata` switch. It is not recommended to switch metadata embedding off unless you are having problems with this feature.
 
 
-# Integration with Plex MediaServer
+# Plex MediaServer Compatibility
 The script offers compatibility with a local installation of the Plex Media server, https://www.plex.tv/ by using the `--plex` switch. With the switch on the script will download, label and organize its downloaded media according to the Plex media server rules to ensure that all tv-series and movies can be read and are stored in compatible Plex library structures.
 
 See more about naming and organization rules for Plex on their website, https://support.plex.tv/articles/naming-and-organizing-your-tv-show-files/
@@ -286,7 +320,7 @@ _Cause_: The file is not available on the RÚV servers.
 The script performs an optimistic attempt to locate any show that is listed in the broadcasting programme. However the files are not guaranteed to be still available on the RÚV servers. This is the error that is shown in those cases.
 
 # Using OpenVPN to automatically connect to a VPN if necessary
-In case you want your script to be run over a [VPN connection](http://www.expressrefer.com/refer-a-friend/30-days-free/?referrer_id=11147993) then it is recommended that you use the `OpenVPN` software. It is widely supported by VPN providers and can be easily used via command line.
+In case you want your script to be run over a [VPN connection](http://www.expressrefer.com/refer-a-friend/30-days-free/?referrer_id=11147993) then it is recommended that you use the `OpenVPN` software. It is widely supported by VPN providers and can be used via command line.
 
 Below is an example of how to integrate a VPN connection sequence before running the ruvsarpur.py downloader on Windows
 
