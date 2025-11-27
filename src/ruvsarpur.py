@@ -119,8 +119,8 @@ def countLinesInFile(filename):
 #     isFileOlderThan(filename, timedelta(seconds=10))
 #     isFileOlderThan(filename, timedelta(days=14))
 def isFileOlderThan(file, delta): 
-    cutoff = datetime.datetime.utcnow() - delta
-    mtime = datetime.datetime.utcfromtimestamp(os.path.getmtime(file))
+    cutoff = datetime.datetime.now(datetime.UTC) - delta
+    mtime = datetime.datetime.fromtimestamp(os.path.getmtime(file), datetime.UTC)
     if mtime < cutoff:
         return True
     return False
