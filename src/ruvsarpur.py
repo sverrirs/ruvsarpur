@@ -106,6 +106,10 @@ RE_VOD_URL_PARTS = re.compile(r'(?P<urlprefix>.*)(?P<rest>\/\d{3,4}\/index\.m3u8
 RE_VOD_BASE_URL = re.compile(r'(?P<vodbase>.*)\/(?P<rest>.*\.m3u8)', re.IGNORECASE)
 
 RUV_URL = 'https://ruv-vod.akamaized.net'
+RUV_CATEGORY_GRAPHQL_URL = 'https://spilari.nyr.ruv.is/gql/'
+RUV_CATEGORY_GRAPHQL_QUERY = {
+  'query': 'query { Category(station: tv) { categories { programs { id title web_available_episodes } } } }'
+}
 
 # Function to count lines in very large files efficiently, see: https://stackoverflow.com/a/27517681/779521
 def countLinesInFile(filename):
@@ -404,6 +408,36 @@ def __create_retry_session(retries=5):
   session.mount('https://', adapter)
   return session
 
+# Returns all currently VOD-available program ids from the category feed. The
+# featured feed used by getVodSchedule omits standalone films and older items,
+# so this is used only to discover programs that are missing from that feed.
+def getVodCategoryPrograms():
+  try:
+    request = __create_retry_session().post(
+      RUV_CATEGORY_GRAPHQL_URL,
+      json=RUV_CATEGORY_GRAPHQL_QUERY,
+      timeout=30)
+    if request is None or request.status_code != 200:
+      return []
+
+    data = request.json()
+    if data.get('errors'):
+      return []
+
+    programs = {}
+    categories = data.get('data', {}).get('Category', {}).get('categories', [])
+    for category in categories:
+      for program in category.get('programs', []):
+        program_id = program.get('id')
+        if program_id is None or int(program.get('web_available_episodes', 0) or 0) <= 0:
+          continue
+        programs[str(program_id)] = program
+
+    return list(programs.values())
+  except Exception:
+    # Discovery is supplemental; retain the established featured-feed path if
+    # the newer GraphQL endpoint is unavailable or changes shape.
+    return []
 # Attempts to discover the correct playlist file
 def find_m3u8_playlist_url(item, display_title, video_quality):
   
@@ -932,6 +966,13 @@ def getVodSchedule(existing_schedule, args_incremental_refresh=False, imdb_cache
   # Remove all duplicate series from the list
   data = list({item['id']:item for item in data}.values())
 
+  # The featured feed omits some standalone films and older VOD programs.
+  # Discover those ids from the category feed, then let the existing exact-id
+  # loader fetch their complete episode metadata below.
+  category_programs = getVodCategoryPrograms()
+  featured_program_ids = set(str(item['id']) for item in data if 'id' in item)
+  data.extend(program for program in category_programs
+              if str(program.get('id')) not in featured_program_ids)
   schedule = {}  
 
   # If we are dealing with incremental refresh then start by storing our existing schedule
