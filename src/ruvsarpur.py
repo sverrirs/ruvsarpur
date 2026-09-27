@@ -434,19 +434,54 @@ def find_m3u8_playlist_url(item, display_title, video_quality):
 
   url_first_file = item['vod_url_full']
 
+  # Target height (in pixels) for each supported quality tier, used to pick the
+  # closest matching variant out of the master playlist (see below).
+  QUALITY_TARGET_HEIGHT = { "Normal": 480, "HD720": 720, "HD1080": 1080 }
+
+  url_formatted = None
   try:
-    # Perform the first get
+    # Perform the first get, this returns the master playlist which lists all available variant streams
     request = __create_retry_session().get(url_first_file, stream=False, timeout=5, verify=False, headers=headers)
     if request is None or not request.status_code == 200 or len(request.text) <= 0:
       print( "{0} not found on server (first file, pid={1}, url={2})".format(color_title(display_title), pid, url_first_file))
       return None
 
-    # Assume the new format
-    url_formatted = '{0}/{1}/index.m3u8'.format(item['vod_url'], QUALITY_BITRATE[video_quality]['code']) 
+    master_playlist = request.text
 
-    # Check if this actually is the old format
-    if request.text.find('.m3u8?tlm=hls&streams') > 0:
-      url_formatted = '{0}/asset-audio=50000-video={1}.m3u8'.format(item['vod_url'], QUALITY_BITRATE[video_quality]['bits'])       
+    # September 2026 : RUV switched the master playlist to reference variants by named
+    # quality folders instead of the bitrate-coded ones, e.g.
+    #    #EXT-X-STREAM-INF:BANDWIDTH=7106400,RESOLUTION=1920x1080,...
+    #    1080p/stream.m3u8
+    # Parse out every variant's resolution and relative path and pick the one closest
+    # to (without exceeding, if possible) the requested quality tier.
+    variants = []
+    lines = master_playlist.splitlines()
+    for i, line in enumerate(lines):
+      if not line.startswith('#EXT-X-STREAM-INF'):
+        continue
+      if i + 1 >= len(lines):
+        continue
+      variant_uri = lines[i + 1].strip()
+      if len(variant_uri) < 1 or variant_uri.startswith('#'):
+        continue
+      res_match = re.search(r'RESOLUTION=\d+x(?P<height>\d+)', line)
+      height = int(res_match.group('height')) if res_match else 0
+      variants.append((height, variant_uri))
+
+    if len(variants) > 0:
+      variants.sort(key=lambda v: v[0], reverse=True)
+      target_height = QUALITY_TARGET_HEIGHT.get(video_quality, 1080)
+      candidates = [v for v in variants if v[0] <= target_height]
+      chosen = candidates[0] if len(candidates) > 0 else variants[-1]
+      url_formatted = '{0}/{1}'.format(item['vod_url'], chosen[1])
+
+    # Fall back to the older '.m3u8?tlm=hls&streams' bitrate format
+    elif master_playlist.find('.m3u8?tlm=hls&streams') > 0:
+      url_formatted = '{0}/asset-audio=50000-video={1}.m3u8'.format(item['vod_url'], QUALITY_BITRATE[video_quality]['bits'])
+
+    # Last resort: the legacy numeric bitrate-folder format
+    else:
+      url_formatted = '{0}/{1}/index.m3u8'.format(item['vod_url'], QUALITY_BITRATE[video_quality]['code'])
 
     # Do the second request to get the actual stream data in the correct format
     request = __create_retry_session().get(url_formatted, stream=False, timeout=5, verify=False, headers=headers)
