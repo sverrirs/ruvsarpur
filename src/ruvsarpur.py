@@ -441,12 +441,34 @@ def find_m3u8_playlist_url(item, display_title, video_quality):
       print( "{0} not found on server (first file, pid={1}, url={2})".format(color_title(display_title), pid, url_first_file))
       return None
 
-    # Assume the new format
-    url_formatted = '{0}/{1}/index.m3u8'.format(item['vod_url'], QUALITY_BITRATE[video_quality]['code']) 
+    # Default to the 2022 RUV VOD format
+    url_formatted = '{0}/{1}/index.m3u8'.format(item['vod_url'], QUALITY_BITRATE[video_quality]['code'])
 
-    # Check if this actually is the old format
+    # Old pre-2022 format
     if request.text.find('.m3u8?tlm=hls&streams') > 0:
-      url_formatted = '{0}/asset-audio=50000-video={1}.m3u8'.format(item['vod_url'], QUALITY_BITRATE[video_quality]['bits'])       
+      url_formatted = '{0}/asset-audio=50000-video={1}.m3u8'.format(item['vod_url'], QUALITY_BITRATE[video_quality]['bits'])
+
+    # Current RUV master-playlist format
+    else:
+      quality_resolution = {
+        'Normal': '960x540',
+        'HD720': '1280x720',
+        'HD1080': '1920x1080'
+      }
+
+      wanted_resolution = quality_resolution.get(video_quality)
+
+      if wanted_resolution:
+        lines = request.text.splitlines()
+
+        for i, line in enumerate(lines):
+          if line.startswith('#EXT-X-STREAM-INF:') and 'RESOLUTION={0}'.format(wanted_resolution) in line:
+            for candidate in lines[i + 1:]:
+              candidate = candidate.strip()
+              if candidate and not candidate.startswith('#'):
+                url_formatted = urllib.parse.urljoin(url_first_file, candidate)
+                break
+            break
 
     # Do the second request to get the actual stream data in the correct format
     request = __create_retry_session().get(url_formatted, stream=False, timeout=5, verify=False, headers=headers)
@@ -1343,13 +1365,29 @@ def searchForItemsInTvSchedule(args, schedule):
       if( 'pid' in schedule_item and schedule_item['pid'] in args.pid):
         candidate_to_add = schedule_item
     elif( args.find is not None ):
-      if( 'title' in schedule_item and fuzz.partial_ratio( args.find.lower(), createShowTitle(schedule_item, args.originaltitle).lower() ) > 85 ):
+      def _norm_find_text(v):
+        if v is None:
+          return None
+        return ' '.join(str(v).split()).strip().lower()
+
+      find_text = _norm_find_text(args.find)
+
+      show_title = _norm_find_text(createShowTitle(schedule_item, args.originaltitle)) if ('title' in schedule_item) else None
+      title = _norm_find_text(schedule_item['title']) if ('title' in schedule_item and schedule_item['title'] is not None) else None
+      series_title = _norm_find_text(schedule_item['series_title']) if ('series_title' in schedule_item and schedule_item['series_title'] is not None) else None
+      original_title = _norm_find_text(schedule_item['original-title']) if ('original-title' in schedule_item and schedule_item['original-title'] is not None) else None
+
+      # Prefer exact matches on actual title fields (prevents broad matches like 'Jörðin')
+      if series_title == find_text:
         candidate_to_add = schedule_item
-      elif( 'title' in schedule_item and fuzz.partial_ratio( args.find.lower(), schedule_item['title'].lower() ) > 85 ):
+      elif title == find_text:
         candidate_to_add = schedule_item
-      elif( 'series_title' in schedule_item and fuzz.partial_ratio( args.find.lower(), schedule_item['series_title'].lower() ) > 85 ):
+      elif original_title == find_text:
         candidate_to_add = schedule_item
-      elif( 'original-title' in schedule_item and not schedule_item['original-title'] is None and fuzz.partial_ratio( args.find.lower(), schedule_item['original-title'].lower() ) > 85 ):
+      # Fallback for episode-formatted titles like 'Series Name (24 af 26)'
+      elif show_title == find_text:
+        candidate_to_add = schedule_item
+      elif show_title is not None and show_title.startswith(find_text + ' ('):
         candidate_to_add = schedule_item
     else:
       # By default if there is no filtering then we simply list everything in the schedule
